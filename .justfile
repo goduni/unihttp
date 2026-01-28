@@ -16,7 +16,10 @@ static-analysis:
 test:
     pytest --cov
 
+test-all:
+    nox
+
 check-all:
     just lint
     just static-analysis
-    just test
+    just test-all
