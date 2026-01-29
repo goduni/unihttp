@@ -124,10 +124,7 @@ class ForMarkerLocStackChecker(LocStackChecker):
         ) and self.loc_stack_checker.check_loc_stack(mediator, loc_stack)
 
     def _check_field_loc(self, loc: FieldLoc) -> bool:
-        try:
-            marker = get_marker(loc.type)
-        except ValueError:
-            return False
+        marker = get_marker(loc.type)
 
         if marker is None:
             return False
