@@ -164,6 +164,7 @@ def for_marker(
             lambda x: datetime.fromtimestamp(x / 1000),
         ).
     """
+    loc_stack_checker: LocStackChecker
     if predicate is None:
         loc_stack_checker = P.ANY
     else:
