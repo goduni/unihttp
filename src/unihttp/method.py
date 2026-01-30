@@ -32,7 +32,8 @@ class BaseMethod[ResponseType]:
 
         for base in get_original_bases(cls):
             origin = getattr(base, "__origin__", None)
-            if origin is BaseMethod:
+
+            if origin is not None and issubclass(origin, BaseMethod):
                 if args := get_args(base):
                     cls.__returning__ = args[0]
                 break
