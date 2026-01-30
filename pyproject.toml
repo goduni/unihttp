@@ -45,9 +45,10 @@ Issues = "https://github.com/goduni/unihttp/issues"
 httpx = ["httpx>=0.28.1"]
 requests = ["requests>=2.32.0"]
 aiohttp = ["aiohttp>=3.10.0"]
+niquests = ["niquests>=3.17.0"]
 
 [dependency-groups]
-optionals = ["unihttp[httpx]", "unihttp[requests]", "unihttp[aiohttp]"]
+optionals = ["unihttp[httpx]", "unihttp[requests]", "unihttp[aiohttp]", "unihttp[niquests]"]
 
 lint = [
     "mypy==1.17.1",

@@ -10,4 +10,4 @@ nox.options.reuse_existing_virtualenvs = True
     uv_groups=["dev"]
 )
 def test(s: nox.Session) -> None:
-    s.run("pytest", "--cov")
+    s.run("pytest", "--cov", "src")

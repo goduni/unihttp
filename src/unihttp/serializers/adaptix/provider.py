@@ -5,12 +5,13 @@ from unihttp.method import BaseMethod
 from adaptix import Provider, bound
 from adaptix._internal.morphing.name_layout.component import (
     BuiltinExtraMoveAndPoliciesMaker,
-    BuiltinSievesMaker,
 )
 from adaptix._internal.morphing.name_layout.provider import BuiltinNameLayoutProvider
 from adaptix._internal.provider.loc_stack_filtering import OriginSubclassLSC
+from adaptix._internal.provider.provider_wrapper import ConcatProvider
 
 from .marker_tools import DefaultMarkerFieldPathMaker, MarkerFieldPathMaker
+from .omitted import OmittedSievesMarker, omitted_provider
 
 
 class _MethodProvider(BuiltinNameLayoutProvider):
@@ -19,7 +20,7 @@ class _MethodProvider(BuiltinNameLayoutProvider):
             marker_path_maker: MarkerFieldPathMaker,
     ) -> None:
         super().__init__(
-            sieves_maker=BuiltinSievesMaker(),
+            sieves_maker=OmittedSievesMarker(),
             structure_maker=marker_path_maker,
             extra_move_maker=BuiltinExtraMoveAndPoliciesMaker(),
             extra_policies_maker=BuiltinExtraMoveAndPoliciesMaker(),
@@ -36,7 +37,10 @@ def method_provider(
     if marker_path_maker is None:
         marker_path_maker = DefaultMarkerFieldPathMaker()
 
-    return bound(
-        OriginSubclassLSC(method_tp),
-        _MethodProvider(marker_path_maker),
+    return ConcatProvider(
+        bound(
+            OriginSubclassLSC(method_tp),
+            _MethodProvider(marker_path_maker),
+        ),
+        omitted_provider()
     )

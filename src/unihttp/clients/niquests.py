@@ -1,10 +1,10 @@
 import json
-from collections.abc import Callable
-from typing import Any
+from collections.abc import Callable, Mapping
+from typing import Any, cast
 from urllib.parse import urljoin
 
-import httpx
-from httpx import AsyncClient, Client
+import niquests
+from niquests import AsyncSession, Session
 
 from unihttp.clients.base import BaseAsyncClient, BaseSyncClient
 from unihttp.exceptions import NetworkError, RequestTimeoutError
@@ -15,8 +15,8 @@ from unihttp.middlewares.base import AsyncMiddleware, Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
 
 
-class HTTPXSyncClient(BaseSyncClient):
-    """Synchronous client implementation using the `httpx` library."""
+class NiquestsSyncClient(BaseSyncClient):
+    """Synchronous client implementation using the `niquests` library."""
 
     def __init__(
             self,
@@ -24,7 +24,7 @@ class HTTPXSyncClient(BaseSyncClient):
             request_dumper: RequestDumper,
             response_loader: ResponseLoader,
             middleware: list[Middleware] | None = None,
-            session: Client | None = None,
+            session: Session | None = None,
             json_dumps: Callable[[Any], str] = json.dumps,
             json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
     ):
@@ -38,12 +38,21 @@ class HTTPXSyncClient(BaseSyncClient):
         )
 
         if session is None:
-            session = Client()
-
-        self._session = session
+            self._session = Session()
+        else:
+            self._session = session
 
     def _convert_files(self, files: dict[str, Any]) -> list[tuple[str, Any]]:
-        """Convert files to a list of tuples for httpx."""
+        """Convert files to a format suitable for niquests."""
+        converted_files = {}
+        for key, value in files.items():
+            if isinstance(value, list):
+                pass
+            elif isinstance(value, UploadFile):
+                converted_files[key] = value.to_tuple()
+            else:
+                converted_files[key] = value
+
         file_list = []
         for key, value in files.items():
             if isinstance(value, list):
@@ -61,12 +70,16 @@ class HTTPXSyncClient(BaseSyncClient):
     def make_request(self, request: HTTPRequest) -> HTTPResponse:
         content = None
 
+        if request.form:
+            content = request.form
+
         if request.body:
             if request.form or request.file:
                 raise ValueError(
                     "Cannot use Body with Form or File. "
                     "Use Form for fields in multipart requests."
                 )
+
             content = self.json_dumps(request.body)
             if "Content-Type" not in request.header:
                 request.header["Content-Type"] = "application/json"
@@ -79,22 +92,23 @@ class HTTPXSyncClient(BaseSyncClient):
                 headers=request.header,
                 params=request.query,
                 files=files,
-                content=content,
-                data=request.form,
+                data=content,
             )
-        except httpx.NetworkError as e:
+        except niquests.exceptions.ConnectionError as e:
             raise NetworkError(str(e)) from e
-        except httpx.TimeoutException as e:
+        except niquests.exceptions.Timeout as e:
             raise RequestTimeoutError(str(e)) from e
+        except niquests.exceptions.RequestException as e:
+            raise NetworkError(str(e)) from e
 
         response_data = None
         if response.content:
-            response_data = self.json_loads(response.text)
+            response_data = self.json_loads(response.content)
 
         return HTTPResponse(
-            status_code=response.status_code,
-            headers=response.headers,
-            cookies=response.cookies,
+            status_code=response.status_code or 0,
+            headers=dict(response.headers),
+            cookies=cast(Mapping[str, Any], response.cookies),
             data=response_data,
             raw_response=response,
         )
@@ -103,8 +117,8 @@ class HTTPXSyncClient(BaseSyncClient):
         self._session.close()
 
 
-class HTTPXAsyncClient(BaseAsyncClient):
-    """Asynchronous client implementation using the `httpx` library."""
+class NiquestsAsyncClient(BaseAsyncClient):
+    """Asynchronous client implementation using the `niquests` library."""
 
     def __init__(
             self,
@@ -112,7 +126,7 @@ class HTTPXAsyncClient(BaseAsyncClient):
             request_dumper: RequestDumper,
             response_loader: ResponseLoader,
             middleware: list[AsyncMiddleware] | None = None,
-            session: AsyncClient | None = None,
+            session: AsyncSession | None = None,
             json_dumps: Callable[[Any], str] = json.dumps,
             json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
     ):
@@ -126,12 +140,12 @@ class HTTPXAsyncClient(BaseAsyncClient):
         )
 
         if session is None:
-            session = AsyncClient()
-
-        self._session = session
+            self._session = AsyncSession()
+        else:
+            self._session = session
 
     def _convert_files(self, files: dict[str, Any]) -> list[tuple[str, Any]]:
-        """Convert files to a list of tuples for httpx."""
+        """Convert files to a list of tuples for niquests."""
         file_list = []
         for key, value in files.items():
             if isinstance(value, list):
@@ -148,12 +162,17 @@ class HTTPXAsyncClient(BaseAsyncClient):
 
     async def make_request(self, request: HTTPRequest) -> HTTPResponse:
         content = None
+
+        if request.form:
+            content = request.form
+
         if request.body:
             if request.form or request.file:
                 raise ValueError(
                     "Cannot use Body with Form or File. "
                     "Use Form for fields in multipart requests."
                 )
+
             content = self.json_dumps(request.body)
             if "Content-Type" not in request.header:
                 request.header["Content-Type"] = "application/json"
@@ -166,25 +185,26 @@ class HTTPXAsyncClient(BaseAsyncClient):
                 headers=request.header,
                 params=request.query,
                 files=files,
-                content=content,
-                data=request.form,
+                data=content,
             )
-        except httpx.NetworkError as e:
+        except niquests.exceptions.ConnectionError as e:
             raise NetworkError(str(e)) from e
-        except httpx.TimeoutException as e:
+        except niquests.exceptions.Timeout as e:
             raise RequestTimeoutError(str(e)) from e
+        except niquests.exceptions.RequestException as e:
+            raise NetworkError(str(e)) from e
 
         response_data = None
         if response.content:
-            response_data = self.json_loads(response.text)
+            response_data = self.json_loads(response.content)
 
         return HTTPResponse(
-            status_code=response.status_code,
-            headers=response.headers,
-            cookies=response.cookies,
+            status_code=response.status_code or 0,
+            headers=dict(response.headers),
+            cookies=cast(Mapping[str, Any], response.cookies),
             data=response_data,
             raw_response=response,
         )
 
     async def close(self) -> None:
-        await self._session.aclose()
+        await self._session.close()

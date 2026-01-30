@@ -80,7 +80,6 @@ def test_for_marker() -> None:
         query_str=["4", "5", "6"],
         body_int=1234567890,
         body_none=None,
-        # `body_default_none` acting like `Omitted` when `= None` idk why
         # `body_omitted` is just `Omitted`
         body_filled="filled",
         form_anyway="12345",
@@ -103,8 +102,7 @@ def test_for_marker() -> None:
         "body": {
             "body_int": datetime.fromtimestamp(1234567890),
             "body_none": None,
-            # `body_default_none` acting like `Omitted` when `= None` idk why
-            # `body_omitted` is just `Omitted`
+            "body_default_none": None,
             "body_filled": "filled",
         },
         "form": {

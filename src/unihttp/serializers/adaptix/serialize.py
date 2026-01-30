@@ -7,7 +7,7 @@ from unihttp.serializers.adaptix.fixed_tp_tags_unwrapping import (
 )
 from unihttp.serializers.adaptix.provider import method_provider
 
-from adaptix import Retort, dumper, name_mapping
+from adaptix import Retort, dumper
 
 T = TypeVar("T")
 
@@ -15,7 +15,6 @@ DEFAULT_RETORT = Retort(
     recipe=[
         fixed_type_hint_tags_unwrapping_provider(),
         method_provider(),
-        name_mapping(omit_default=True),
         dumper(UploadFile, lambda x: x.to_tuple()),
     ]
 )

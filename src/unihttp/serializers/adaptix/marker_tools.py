@@ -77,7 +77,7 @@ class MarkerFieldPathMaker(BuiltinStructureMaker, ABC):
             key_path: KeyPath | None,
     ) -> FieldAndPath[Any]:
         if key_path is None:
-            return field, key_path
+            return field, key_path  # pragma: no cover
 
         marker = get_marker(field.type)
         if marker is None:
