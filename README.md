@@ -31,7 +31,7 @@
 
 - **Declarative**: Define API methods using standard Python type hints.
 - **Type-Safe**: Full support for static type checking.
-- **Backend Agnostic**: Works with `httpx`, `aiohttp`, and `requests`.
+- **Backend Agnostic**: Works with `httpx`, `aiohttp`, `requests` and `niquests`.
 - **Extensible**: Powerful middleware and error handling systems.
 
 ## Installation
@@ -44,6 +44,8 @@ To include a specific HTTP backend (recommended):
 
 ```bash
 pip install "unihttp[httpx]"    # For HTTPX (Sync/Async) support
+# OR
+pip install "unihttp[niquests]"  # For niquests (Sync/Async) support
 # OR
 pip install "unihttp[requests]" # For Requests (Sync) support
 # OR
