@@ -8,7 +8,7 @@
 ![GitHub Repo stars](https://img.shields.io/github/stars/goduni/unihttp)
 [![Telegram](https://img.shields.io/badge/💬-Telegram-blue)](https://t.me/+OsmQESHc1xU1MGVi)
 
-**unihttp** is a modern and fast library for creating declarative API clients.
+**unihttp** is a modern library for creating declarative API clients.
 
 ## Table of Contents
 
