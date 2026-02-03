@@ -145,19 +145,19 @@ def for_marker(
     Usage:
         # Dump all `Query` values `None` to `"null"`
         dumper(
-            for_marker(Query, P[None]),
+            for_marker(QueryMarker, P[None]),
             lambda _: "null",
         )
 
         # Dump all `Query` values `bool` to int
         dumper(
-             for_marker(Query, P[bool]),
+             for_marker(QueryMarker, P[bool]),
              lambda x: int(x),
         )
 
         # Load all `Body` values `datetime` from int-timestamp to datetime
         loader(
-            for_marker(Body, P[datetime]),
+            for_marker(BodyMarker, P[datetime]),
             lambda x: datetime.fromtimestamp(x / 1000),
         ).
     """
