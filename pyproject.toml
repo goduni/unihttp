@@ -17,7 +17,8 @@ authors = [
     { name = "Universe Interface", email = "uni@goduni.me" },
 ]
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 keywords = ["http", "api", "client", "rest", "sdk", "async", "decorator", "adaptix", "declarative"]
 classifiers = [
     "Development Status :: 3 - Alpha",
