@@ -10,12 +10,9 @@ packages = ["src/unihttp"]
 
 [project]
 name = "unihttp"
-version = "0.2.1"
+version = "0.2.2"
 description = "A modern and fast library for developing API clients."
 requires-python = ">=3.12,<3.15"
-dependencies = [
-    "adaptix>=3.0.0b11"
-]
 authors = [
     { name = "Universe Interface", email = "uni@goduni.me" },
 ]
@@ -46,9 +43,19 @@ httpx = ["httpx>=0.28.1"]
 requests = ["requests>=2.32.0"]
 aiohttp = ["aiohttp>=3.10.0"]
 niquests = ["niquests>=3.17.0"]
+pydantic = ["pydantic>=2.0.0"]
+adaptix = ["adaptix>=3.0.0b11"]
+
 
 [dependency-groups]
-optionals = ["unihttp[httpx]", "unihttp[requests]", "unihttp[aiohttp]", "unihttp[niquests]"]
+optionals = [
+    "unihttp[httpx]",
+    "unihttp[requests]",
+    "unihttp[aiohttp]",
+    "unihttp[niquests]",
+    "unihttp[pydantic]",
+    "unihttp[adaptix]"
+]
 
 lint = [
     "mypy==1.17.1",

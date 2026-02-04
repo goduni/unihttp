@@ -14,18 +14,20 @@
 
 - [Features](#features)
 - [Installation](#installation)
+- [Serialization Backends](#serialization-backends)
 - [Quick Start](#quick-start)
-  - [1. Define Methods](#1-define-methods)
-  - [2. Client Implementation Strategies](#2-client-implementation-strategies)
+    - [1. Define Methods](#1-define-methods)
+    - [2. Client Implementation Strategies](#2-client-implementation-strategies)
 - [Markers Reference](#markers-reference)
 - [Middleware](#middleware)
 - [Error Handling](#error-handling)
-  - [1. Method-Level Handling](#1-method-level-handling)
-  - [2. Client-Level Handling](#2-client-level-handling)
-  - [3. Middleware-Level Handling](#3-middleware-level-handling)
-  - [4. Response Body Validation](#4-response-body-validation)
+    - [1. Method-Level Handling](#1-method-level-handling)
+    - [2. Client-Level Handling](#2-client-level-handling)
+    - [3. Middleware-Level Handling](#3-middleware-level-handling)
+    - [4. Response Body Validation](#4-response-body-validation)
 - [Custom JSON Serialization](#custom-json-serialization)
 - [Powered by Adaptix](#powered-by-adaptix)
+- [Pydantic Integration](#pydantic-integration)
 
 ## Features
 
@@ -52,6 +54,17 @@ pip install "unihttp[requests]" # For Requests (Sync) support
 pip install "unihttp[aiohttp]"  # For Aiohttp (Async) support
 ```
 
+## Serialization Backends
+
+`unihttp` allows you to choose your preferred serialization framework:
+
+1. **Adaptix** (Default): High-performance serialization for standard Python types (dataclasses, TypedDict).
+2. **Pydantic**: Native support for Pydantic models.
+
+You will need to pass the appropriate `request_dumper` and `response_loader` when initializing your client.
+See [Powered by Adaptix](#powered-by-adaptix) or [Pydantic Integration](#pydantic-integration) for configuration
+details.
+
 ## Quick Start
 
 ### 1. Define Methods
@@ -69,6 +82,7 @@ class User:
     name: str
     email: str
 
+
 @dataclass
 class GetUser(BaseMethod[User]):
     __url__ = "/users/{id}"
@@ -77,11 +91,12 @@ class GetUser(BaseMethod[User]):
     id: Path[int]
     compact: Query[bool] = False
 
+
 @dataclass
 class CreateUser(BaseMethod[User]):
     __url__ = "/users"
     __method__ = "POST"
-    
+
     name: Body[str]
     email: Body[str]
 ```
@@ -95,16 +110,19 @@ You can choose between a purely declarative style using `bind_method` or a more 
 This is the most concise way to define your client. You simply bind the methods to the client class.
 
 > [!NOTE]
-> **PyCharm Users**: There is currently a known issue with displaying type hints for descriptors like `bind_method` (see [PY-51768](https://youtrack.jetbrains.com/issue/PY-51768)). This is expected to be fixed in the **2026.1** version.
+> **PyCharm Users**: There is currently a known issue with displaying type hints for descriptors like `bind_method` (
+> see [PY-51768](https://youtrack.jetbrains.com/issue/PY-51768)). This is expected to be fixed in the **2026.1** version.
 
 ```python
 from unihttp import bind_method
 from unihttp.clients.httpx import HTTPXSyncClient
 from unihttp.serializers.adaptix import DEFAULT_RETORT
 
+
 class UserClient(HTTPXSyncClient):
     get_user = bind_method(GetUser)
     create_user = bind_method(CreateUser)
+
 
 client = UserClient(
     base_url="https://api.example.com",
@@ -116,14 +134,15 @@ user = client.get_user(id=123)
 
 #### Option B: Imperative Client (via `call_method`)
 
-If you need more control, need to preprocess arguments, or simply prefer explicit method definitions, you can define methods in the client and use `call_method`.
+If you need more control, need to preprocess arguments, or simply prefer explicit method definitions, you can define
+methods in the client and use `call_method`.
 
 ```python
 class UserClient(HTTPXSyncClient):
     def get_user(self, user_id: int) -> User:
         # You can add custom logic here before the call
         return self.call_method(GetUser(id=user_id))
-    
+
     def create_user(self, name: str, email: str) -> User:
         return self.call_method(CreateUser(name=name, email=email))
 ```
@@ -138,25 +157,30 @@ class UserClient(HTTPXSyncClient):
 - `Header`: Adds HTTP headers to the request.
 - `Form`: Sends data as form-encoded (`application/x-www-form-urlencoded`).
 - `File`: Used for multipart file uploads.
-  - `UploadFile`: A wrapper for file uploads that allows specifying a filename and content type (e.g., `UploadFile(b"content", filename="test.txt")`).
+    - `UploadFile`: A wrapper for file uploads that allows specifying a filename and content type (e.g.,
+      `UploadFile(b"content", filename="test.txt")`).
+
 ## Middleware
 
-Middleware allows you to intercept requests and responses globally. This is useful for logging, authentication, or modifying requests on the fly.
+Middleware allows you to intercept requests and responses globally. This is useful for logging, authentication, or
+modifying requests on the fly.
 
 ```python
 from unihttp.middlewares.base import Middleware
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
 
+
 class LoggingMiddleware(Middleware):
     def handle(self, request: HTTPRequest, next_handler) -> HTTPResponse:
         print(f"Requesting {request.url}")
-        
+
         # Call the next handler in the chain
         response = next_handler(request)
-        
+
         print(f"Status: {response.status_code}")
         return response
+
 
 client = HTTPXSyncClient(
     # ...
@@ -169,6 +193,7 @@ client = HTTPXSyncClient(
 `unihttp` offers a layered approach to error handling, giving you control at multiple levels.
 
 ### 1. Method-Level Handling
+
 Override `on_error` in your Method class to handle specific status codes for that endpoint.
 
 ```python
@@ -182,7 +207,9 @@ class GetUser(BaseMethod[User]):
 ```
 
 ### 2. Client-Level Handling
-Override `handle_error` in your Client class to catch errors that weren't handled by the method. This is great for global concerns like token expiration.
+
+Override `handle_error` in your Client class to catch errors that weren't handled by the method. This is great for
+global concerns like token expiration.
 
 ```python
 class MyClient(HTTPXSyncClient):
@@ -192,7 +219,9 @@ class MyClient(HTTPXSyncClient):
 ```
 
 ### 3. Middleware-Level Handling
-You can wrap the execution in a try/except block or inspect the response within a middleware. This is useful for logging exceptions or global error reporting.
+
+You can wrap the execution in a try/except block or inspect the response within a middleware. This is useful for logging
+exceptions or global error reporting.
 
 ```python
 class ErrorReportingMiddleware(Middleware):
@@ -206,7 +235,9 @@ class ErrorReportingMiddleware(Middleware):
 ```
 
 ### 4. Response Body Validation
-Sometimes APIs return `200 OK` but the body contains an error message. You can override `validate_response` to handle this.
+
+Sometimes APIs return `200 OK` but the body contains an error message. You can override `validate_response` to handle
+this.
 
 ```python
 # In your Method or Client
@@ -217,7 +248,8 @@ def validate_response(self, response: HTTPResponse):
 
 ## Custom JSON Serialization
 
-You can use high-performance JSON libraries like `orjson` or `ujson` by passing custom `json_dumps` and `json_loads` to the client.
+You can use high-performance JSON libraries like `orjson` or `ujson` by passing custom `json_dumps` and `json_loads` to
+the client.
 
 ```python
 import orjson
@@ -232,13 +264,21 @@ client = HTTPXSyncClient(
 
 ## Powered by Adaptix
 
-`unihttp` leverages [adaptix](https://github.com/reagento/adaptix) for all data serialization and validation tasks. `adaptix` is a powerful and extremely fast library that allows you to:
+`unihttp` leverages [adaptix](https://github.com/reagento/adaptix) for all data serialization and validation tasks.
+`adaptix` is a powerful and extremely fast library that allows you to:
+
+First, install the optional dependency:
+
+```bash
+pip install "unihttp[adaptix]"
+```
 
 - **Validate data** strictly against your type hints.
 - **Serialize/Deserialize** complex data structures (dataclasses, TypedDicts, etc.) with high performance.
 - **Customize** serialization logic (field renaming, value transformation) using `Retort`.
 
-Crucially, you can customize serialization down to **individual fields in each method**, giving you granular control over how your data is processed.
+Crucially, you can customize serialization down to **individual fields in each method**, giving you granular control
+over how your data is processed.
 
 ```python
 from adaptix import Retort, name_mapping, P
@@ -258,4 +298,51 @@ client = UserClient(
     request_dumper=AdaptixDumper(retort),
     response_loader=AdaptixLoader(retort),
 )
+```
+
+## Pydantic Integration
+
+While `unihttp` works great with standard Python types and dataclasses (via `adaptix`), you can also natively use *
+*Pydantic** models.
+
+First, install the optional dependency:
+
+```bash
+pip install "unihttp[pydantic]"
+```
+
+Then, configure your client to use the Pydantic serializers:
+
+```python
+from pydantic import BaseModel
+from unihttp import BaseMethod, Body, Path
+from unihttp.clients.requests import RequestsSyncClient
+from unihttp.serializers.pydantic import PydanticDumper, PydanticLoader
+
+
+class User(BaseModel):
+    id: int
+    name: str
+
+
+@dataclass
+class CreateUser(BaseMethod[User]):
+    __url__ = "/users"
+    __method__ = "POST"
+
+    user: Body[User]
+
+
+# Initialize serializers
+dumper = PydanticDumper()
+loader = PydanticLoader()
+
+client = RequestsSyncClient(
+    base_url="https://api.example.com",
+    request_dumper=dumper,
+    response_loader=loader
+)
+
+# Now standard Pydantic models are serialized/validated automatically
+client.call_method(CreateUser(user=User(id=1, name="Alice")))
 ```
