@@ -2,6 +2,7 @@ from typing import Any, TypeVar, get_args, get_origin, get_type_hints
 
 from unihttp.http import UploadFile
 from unihttp.markers import Marker
+from unihttp.omitted import Omitted
 from unihttp.serialize import RequestDumper, ResponseLoader
 
 from pydantic import TypeAdapter
@@ -49,6 +50,9 @@ class PydanticDumper(RequestDumper):
             field_value: Any,
             hint: Any,
     ) -> None:
+        if isinstance(field_value, Omitted):
+            return
+
         marker = None
         if get_origin(hint) is not None:
             for arg in get_args(hint):

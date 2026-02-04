@@ -1,18 +1,20 @@
 from typing import Any, TypeVar
 
 from unihttp.http import UploadFile
+from unihttp.omitted import Omitted
 from unihttp.serialize import RequestDumper, ResponseLoader
 from unihttp.serializers.adaptix.fixed_tp_tags_unwrapping import (
     fixed_type_hint_tags_unwrapping_provider,
 )
 from unihttp.serializers.adaptix.provider import method_provider
 
-from adaptix import Retort, dumper
+from adaptix import Retort, as_sentinel, dumper
 
 T = TypeVar("T")
 
 DEFAULT_RETORT = Retort(
     recipe=[
+        as_sentinel(Omitted),
         fixed_type_hint_tags_unwrapping_provider(),
         method_provider(),
         dumper(UploadFile, lambda x: x.to_tuple()),

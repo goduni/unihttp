@@ -1,5 +1,7 @@
 from typing import Any, cast, override
 
+from unihttp.omitted import Omitted as UniOmitted
+
 from adaptix import Mediator, Omitted, Provider
 from adaptix._internal.model_tools.definitions import DefaultValue, NoDefault, OutputField
 from adaptix._internal.morphing.model.crown_definitions import (
@@ -36,7 +38,7 @@ class OmittedSievesMarker(BuiltinSievesMaker):
                 if (
                         field.default != NoDefault() and
                         isinstance(field.default, DefaultValue) and
-                        isinstance(field.default.value, Omitted)
+                        isinstance(field.default.value, (Omitted, UniOmitted))
                 ) or (
                         field.default != NoDefault()
                         and apply_lsc(
@@ -53,9 +55,12 @@ class OmittedSievesMarker(BuiltinSievesMaker):
     def _create_sieve(self, field: OutputField) -> Sieve:
         if (
                 isinstance(field.default, DefaultValue)
-                and isinstance(field.default.value, Omitted)
+                and isinstance(field.default.value, (Omitted, UniOmitted))
         ):
-            return cast("Sieve", lambda obj, value=None: not isinstance(obj, Omitted))
+            return cast(
+                "Sieve",
+                lambda obj, value=None: not isinstance(obj, (Omitted, UniOmitted)),
+            )
         return super()._create_sieve(field)
 
 
