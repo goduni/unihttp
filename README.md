@@ -58,7 +58,7 @@ pip install "unihttp[aiohttp]"  # For Aiohttp (Async) support
 
 `unihttp` allows you to choose your preferred serialization framework:
 
-1. **Adaptix** (Default): High-performance serialization for standard Python types (dataclasses, TypedDict).
+1. **Adaptix** (recommended): High-performance serialization for standard Python types (dataclasses, TypedDict).
 2. **Pydantic**: Native support for Pydantic models.
 
 You will need to pass the appropriate `request_dumper` and `response_loader` when initializing your client.
