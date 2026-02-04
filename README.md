@@ -314,9 +314,12 @@ pip install "unihttp[pydantic]"
 Then, configure your client to use the Pydantic serializers:
 
 ```python
+from dataclasses import dataclass
+
 from pydantic import BaseModel
-from unihttp import BaseMethod, Body, Path
 from unihttp.clients.requests import RequestsSyncClient
+from unihttp.markers import Body
+from unihttp.method import BaseMethod
 from unihttp.serializers.pydantic import PydanticDumper, PydanticLoader
 
 
@@ -338,7 +341,7 @@ dumper = PydanticDumper()
 loader = PydanticLoader()
 
 client = RequestsSyncClient(
-    base_url="https://api.example.com",
+    base_url="https://api.example.org",
     request_dumper=dumper,
     response_loader=loader
 )
