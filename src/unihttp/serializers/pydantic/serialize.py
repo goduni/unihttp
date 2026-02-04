@@ -1,10 +1,10 @@
 from typing import Any, TypeVar, get_args, get_origin, get_type_hints
 
-from pydantic import TypeAdapter
-
 from unihttp.http import UploadFile
 from unihttp.markers import Marker
 from unihttp.serialize import RequestDumper, ResponseLoader
+
+from pydantic import TypeAdapter
 
 T = TypeVar("T")
 
