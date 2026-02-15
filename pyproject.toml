@@ -10,7 +10,7 @@ packages = ["src/unihttp"]
 
 [project]
 name = "unihttp"
-version = "0.2.3"
+version = "0.2.4"
 description = "A modern and fast library for developing API clients."
 requires-python = ">=3.12,<3.15"
 authors = [
