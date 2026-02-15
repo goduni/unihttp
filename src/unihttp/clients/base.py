@@ -48,7 +48,7 @@ class BaseClient:
             Exception: if response body indicates an error.
         """
 
-    def handle_error(self, response: HTTPResponse, method: BaseMethod) -> Any | None:
+    def handle_error(self, response: HTTPResponse, method: BaseMethod) -> None:
         """Handle HTTP status errors for all methods.
 
         Override to provide shared error handling for all API methods.
@@ -58,12 +58,9 @@ class BaseClient:
              response: The HTTP response with error status.
              method: The method instance that triggered the request.
 
-        Returns:
-            Any: Return value to be returned by call_method (suppressing the error).
-            None: Continue error propagation (exceptions will be raised by call_method
-                  default logic if not handled here).
+        Raises:
+            Exception: if response indicates an error that should stop processing.
         """
-        return None
 
 
 class BaseSyncClient(BaseClient):
@@ -93,10 +90,8 @@ class BaseSyncClient(BaseClient):
         Pipeline:
         1. Serialize method to HTTPRequest.
         2. Apply middlewares.
-        3. Execute request (make_request).
-        4. Validate response body (client global + method specific).
-        5. Handle HTTP errors (method specific + client global).
-        6. Deserialize response to ResponseType.
+        3. Execute request (make_request), validate and handle errors.
+        4. Deserialize response to ResponseType.
 
         Args:
             method: The API method instance to execute.
@@ -106,25 +101,25 @@ class BaseSyncClient(BaseClient):
         """
         http_request = method.build_http_request(request_dumper=self.request_dumper)
 
-        handler = self.make_request
+        def _send(request: HTTPRequest) -> HTTPResponse:
+            response = self.make_request(request)
+
+            # Body validation (for APIs with ok: false in 200)
+            self.validate_response(response, method)
+            method.validate_response(response)
+
+            # HTTP status error handling
+            if not response.ok:
+                method.on_error(response)
+                self.handle_error(response, method)
+
+            return response
+
+        handler = _send
         for middleware in reversed(self.middleware):
             handler = functools.partial(middleware.handle, next_handler=handler)
 
         http_response = handler(http_request)
-
-        # Body validation (for APIs with ok: false in 200)
-        self.validate_response(http_response, method)
-        method.validate_response(http_response)
-
-        # HTTP status error handling
-        if not http_response.ok:
-            result = method.on_error(http_response)
-            if result is not None:
-                return result
-
-            result = self.handle_error(http_response, method)
-            if result is not None:
-                return result
 
         return method.make_response(http_response, response_loader=self.response_loader)
 
@@ -178,10 +173,8 @@ class BaseAsyncClient(BaseClient):
         Pipeline:
         1. Serialize method to HTTPRequest.
         2. Apply middlewares.
-        3. Execute request (make_request).
-        4. Validate response body (client global + method specific).
-        5. Handle HTTP errors (method specific + client global).
-        6. Deserialize response to ResponseType.
+        3. Execute request (make_request), validate and handle errors.
+        4. Deserialize response to ResponseType.
 
         Args:
             method: The API method instance to execute.
@@ -191,25 +184,25 @@ class BaseAsyncClient(BaseClient):
         """
         http_request = method.build_http_request(request_dumper=self.request_dumper)
 
-        handler = self.make_request
+        async def _send(request: HTTPRequest) -> HTTPResponse:
+            response = await self.make_request(request)
+
+            # Body validation (for APIs with ok: false in 200)
+            self.validate_response(response, method)
+            method.validate_response(response)
+
+            # HTTP status error handling
+            if not response.ok:
+                method.on_error(response)
+                self.handle_error(response, method)
+
+            return response
+
+        handler = _send
         for middleware in reversed(self.middleware):
             handler = functools.partial(middleware.handle, next_handler=handler)
 
         http_response = await handler(http_request)
-
-        # Body validation (for APIs with ok: false in 200)
-        self.validate_response(http_response, method)
-        method.validate_response(http_response)
-
-        # HTTP status error handling
-        if not http_response.ok:
-            result = method.on_error(http_response)
-            if result is not None:
-                return result
-
-            result = self.handle_error(http_response, method)
-            if result is not None:
-                return result
 
         return method.make_response(http_response, response_loader=self.response_loader)
 
