@@ -1,3 +1,4 @@
+from typing import Any
 from urllib.parse import urljoin
 
 import requests  # type: ignore[import-untyped]
@@ -64,9 +65,12 @@ class RequestsSyncClient(BaseSyncClient):
         except requests.exceptions.Timeout as e:
             raise RequestTimeoutError(str(e)) from e
 
-        response_data = None
+        response_data: Any = None
         if response.content:
-            response_data = self.json_loads(response.content)
+            try:
+                response_data = self.json_loads(response.content)
+            except (ValueError, TypeError):
+                response_data = response.content
 
         return HTTPResponse(
             status_code=response.status_code,

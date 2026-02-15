@@ -98,7 +98,7 @@ class BaseMethod[ResponseType]:
             Exception: if response body indicates an error
         """
 
-    def on_error(self, response: HTTPResponse) -> ResponseType | None:
+    def on_error(self, response: HTTPResponse) -> None:
         """Handle HTTP status errors for this specific method.
 
         Override to provide custom error handling for this endpoint.
@@ -107,11 +107,6 @@ class BaseMethod[ResponseType]:
         Args:
              response: The HTTP response with error status.
 
-        Returns:
-            ResponseType: return this instead of raising
-            None: continue to client's handle_error
-
         Raises:
             Exception: propagate immediately
         """
-        return None

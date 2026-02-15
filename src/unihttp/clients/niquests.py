@@ -101,9 +101,12 @@ class NiquestsSyncClient(BaseSyncClient):
         except niquests.exceptions.RequestException as e:
             raise NetworkError(str(e)) from e
 
-        response_data = None
+        response_data: Any = None
         if response.content:
-            response_data = self.json_loads(response.content)
+            try:
+                response_data = self.json_loads(response.content)
+            except (ValueError, TypeError):
+                response_data = response.content
 
         return HTTPResponse(
             status_code=response.status_code or 0,
@@ -194,9 +197,12 @@ class NiquestsAsyncClient(BaseAsyncClient):
         except niquests.exceptions.RequestException as e:
             raise NetworkError(str(e)) from e
 
-        response_data = None
+        response_data: Any = None
         if response.content:
-            response_data = self.json_loads(response.content)
+            try:
+                response_data = self.json_loads(response.content)
+            except (ValueError, TypeError):
+                response_data = response.content
 
         return HTTPResponse(
             status_code=response.status_code or 0,

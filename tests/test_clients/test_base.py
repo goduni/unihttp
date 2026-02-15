@@ -60,28 +60,29 @@ class TestSyncClient:
         # Check order: MW1 req -> MW2 req -> client -> MW2 resp -> MW1 resp
         assert order == ["mw1_req", "mw2_req", "mw2_resp", "mw1_resp"]
 
-    def test_error_handling_priority(self, mock_request_dumper, mock_response_loader):
+    def test_error_handling_calls(self, mock_request_dumper, mock_response_loader):
         class ErrorClient(BaseSyncClient):
             def make_request(self, request):
                 return HTTPResponse(400, {}, {}, {}, None)
 
             def handle_error(self, response, method):
-                return "client_handled"
+                pass
 
         client = ErrorClient("http://base", mock_request_dumper, mock_response_loader)
         method = SimpleMethod()
-        method.on_error = Mock(return_value="method_handled")
+        method.on_error = Mock()
+        client.handle_error = Mock()
 
         mock_request_dumper.dump.return_value = {"path": {}, "query": {}, "header": {}, "body": {}}
+        mock_response_loader.load.return_value = "proceeded"
 
-        # 1. Method handles it
         result = client.call_method(method)
-        assert result == "method_handled"
-
-        # 2. Method passes (returns None), Client handles it
-        method.on_error = Mock(return_value=None)
-        result = client.call_method(method)
-        assert result == "client_handled"
+        
+        # Verify both hooks were called
+        method.on_error.assert_called_once()
+        client.handle_error.assert_called_once()
+        # Verify it still proceeded to load response since no exception was raised
+        assert result == "proceeded"
 
 
 @pytest.mark.asyncio

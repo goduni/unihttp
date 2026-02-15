@@ -87,9 +87,12 @@ class HTTPXSyncClient(BaseSyncClient):
         except httpx.TimeoutException as e:
             raise RequestTimeoutError(str(e)) from e
 
-        response_data = None
+        response_data: Any = None
         if response.content:
-            response_data = self.json_loads(response.text)
+            try:
+                response_data = self.json_loads(response.text)
+            except (ValueError, TypeError):
+                response_data = response.text
 
         return HTTPResponse(
             status_code=response.status_code,
@@ -174,9 +177,12 @@ class HTTPXAsyncClient(BaseAsyncClient):
         except httpx.TimeoutException as e:
             raise RequestTimeoutError(str(e)) from e
 
-        response_data = None
+        response_data: Any = None
         if response.content:
-            response_data = self.json_loads(response.text)
+            try:
+                response_data = self.json_loads(response.text)
+            except (ValueError, TypeError):
+                response_data = response.text
 
         return HTTPResponse(
             status_code=response.status_code,

@@ -60,5 +60,5 @@ def test_validate_response_default():
 def test_on_error_default():
     method = SimpleMethod()
     response = HTTPResponse(404, {}, {}, {}, None)
-    # Default implementation returns None
-    assert method.on_error(response) is None
+    # Default implementation does nothing
+    method.on_error(response)

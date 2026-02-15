@@ -95,10 +95,13 @@ class AiohttpAsyncClient(BaseAsyncClient):
                     params=request.query,
                     data=data,
             ) as response:
-                response_data = None
+                response_data: Any = None
                 content = await response.read()
                 if content:
-                    response_data = self.json_loads(content)
+                    try:
+                        response_data = self.json_loads(content)
+                    except (ValueError, TypeError):
+                        response_data = content
 
                 return HTTPResponse(
                     status_code=response.status,

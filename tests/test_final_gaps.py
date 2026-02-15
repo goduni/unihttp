@@ -33,26 +33,28 @@ async def test_async_client_error_handling(mock_request_dumper, mock_response_lo
     class AsyncC(BaseAsyncClient):
         async def make_request(self, req): return HTTPResponse(400, {}, {}, {}, None)
 
-        def handle_error(self, resp, method): return "client_handled"
+        def handle_error(self, resp, method): pass
 
     class Method(BaseMethod[str]):
         __url__ = "/"
         __method__ = "GET"
 
-        def on_error(self, resp): return "method_handled"
+        def on_error(self, resp): pass
 
     client = AsyncC("http://b", mock_request_dumper, mock_response_loader)
     mock_request_dumper.dump.return_value = {}
+    mock_response_loader.load.return_value = "proceeded"
 
-    # Method handles it
-    res = await client.call_method(Method())
-    assert res == "method_handled"
-
-    # Client handles it
+    # Verify hooks are called
     m = Method()
-    m.on_error = lambda r: None
+    m.on_error = Mock()
+    client.handle_error = Mock()
+    
     res = await client.call_method(m)
-    assert res == "client_handled"
+    
+    m.on_error.assert_called_once()
+    client.handle_error.assert_called_once()
+    assert res == "proceeded"
 
 
 # 2. Async Retry Re-raise
