@@ -45,7 +45,7 @@ requests = ["requests>=2.32.0"]
 aiohttp = ["aiohttp>=3.10.0"]
 niquests = ["niquests>=3.17.0"]
 pydantic = ["pydantic>=2.0.0"]
-adaptix = ["adaptix>=3.0.0b11"]
+adaptix = ["adaptix>=3.0.0b12"]
 
 
 [dependency-groups]
