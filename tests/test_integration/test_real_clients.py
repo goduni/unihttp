@@ -8,6 +8,7 @@ import pytest
 from unihttp.clients.aiohttp import AiohttpAsyncClient
 from unihttp.clients.httpx import HTTPXAsyncClient
 from unihttp.clients.requests import RequestsSyncClient
+from unihttp.clients.zapros import ZaprosAsyncClient
 from unihttp.method import BaseMethod
 from unihttp.serialize import RequestDumper, ResponseLoader
 
@@ -79,6 +80,18 @@ async def test_httpx_async_real_echo(integration_server, real_dumper, real_loade
 
         assert result["body"] == {"foo": "bar"}
         assert result["headers"]["X-Test"] == "httpx"
+
+
+@pytest.mark.asyncio
+async def test_zapros_async_real_echo(integration_server, real_dumper, real_loader):
+    base_url = str(integration_server.make_url("/"))
+
+    async with ZaprosAsyncClient(base_url, real_dumper, real_loader) as client:
+        method = EchoMethod(body={"baz": "qux"}, headers={"X-Test": "zapros"})
+        result = await client.call_method(method)
+
+        assert result["body"] == {"baz": "qux"}
+        assert result["headers"]["X-Test"] == "zapros"
 
 
 @pytest.mark.skip(reason="Sync client blocks the event loop of the async server fixture")

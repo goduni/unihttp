@@ -33,7 +33,7 @@
 
 - **Declarative**: Define API methods using standard Python type hints.
 - **Type-Safe**: Full support for static type checking.
-- **Backend Agnostic**: Works with `httpx`, `aiohttp`, `requests` and `niquests`.
+- **Backend Agnostic**: Works with `httpx`, `aiohttp`, `requests`, `niquests` and `zapros`.
 - **Extensible**: Powerful middleware and error handling systems.
 
 ## Installation
@@ -52,6 +52,8 @@ pip install "unihttp[niquests]"  # For niquests (Sync/Async) support
 pip install "unihttp[requests]" # For Requests (Sync) support
 # OR
 pip install "unihttp[aiohttp]"  # For Aiohttp (Async) support
+# OR
+pip install "unihttp[zapros]"   # For Zapros (Sync/Async) support
 ```
 
 ## Serialization Backends
