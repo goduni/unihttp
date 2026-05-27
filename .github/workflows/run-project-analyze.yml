@@ -40,7 +40,7 @@ jobs:
         run: uv sync --group dev
 
       - name: Run Ruff
-        run: uv run ruff check && uv run ruff format
+        run: uv run ruff check && uv run ruff format --check
 
       - name: Run MyPy
         run: uv run mypy
