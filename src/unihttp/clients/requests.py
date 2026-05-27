@@ -14,13 +14,12 @@ from unihttp.serialize import RequestDumper, ResponseLoader
 
 class RequestsSyncClient(BaseSyncClient):
     def __init__(
-            self,
-            base_url: str,
-
-            request_dumper: RequestDumper,
-            response_loader: ResponseLoader,
-            middleware: list[Middleware] | None = None,
-            session: Session | None = None,
+        self,
+        base_url: str,
+        request_dumper: RequestDumper,
+        response_loader: ResponseLoader,
+        middleware: list[Middleware] | None = None,
+        session: Session | None = None,
     ):
         super().__init__(
             base_url=base_url,

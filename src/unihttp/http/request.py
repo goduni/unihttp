@@ -16,6 +16,7 @@ class HTTPRequest:
         file: Dictionary of files to upload.
         form: Dictionary of form_data parameters.
     """
+
     url: str
     method: str
 

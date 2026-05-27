@@ -17,39 +17,36 @@ class MethodBinder(Generic[MethodParamSpec, MethodResultT]):  # noqa: UP046
     __slots__ = ("_method_tp",)
 
     def __init__(
-            self,
-            method_tp: Callable[MethodParamSpec, BaseMethod[MethodResultT]],
+        self,
+        method_tp: Callable[MethodParamSpec, BaseMethod[MethodResultT]],
     ) -> None:
         self._method_tp = method_tp
 
     @overload
     def __get__(
-            self,
-            instance: None,
-            owner: type,
-    ) -> "MethodBinder[MethodParamSpec, MethodResultT]":
-        ...
+        self,
+        instance: None,
+        owner: type,
+    ) -> "MethodBinder[MethodParamSpec, MethodResultT]": ...
 
     @overload
     def __get__(
-            self,
-            instance: "BaseSyncClient",
-            owner: type,
-    ) -> Callable[MethodParamSpec, MethodResultT]:
-        ...
+        self,
+        instance: "BaseSyncClient",
+        owner: type,
+    ) -> Callable[MethodParamSpec, MethodResultT]: ...
 
     @overload
     def __get__(
-            self,
-            instance: "BaseAsyncClient",
-            owner: type,
-    ) -> Callable[MethodParamSpec, Awaitable[MethodResultT]]:
-        ...
+        self,
+        instance: "BaseAsyncClient",
+        owner: type,
+    ) -> Callable[MethodParamSpec, Awaitable[MethodResultT]]: ...
 
     def __get__(
-            self,
-            instance: Any,
-            owner: type | None = None,
+        self,
+        instance: Any,
+        owner: type | None = None,
     ) -> Any:
         if instance is None:
             return self
@@ -63,10 +60,11 @@ class MethodBinder(Generic[MethodParamSpec, MethodResultT]):  # noqa: UP046
         method_tp = self._method_tp
 
         if inspect.iscoroutinefunction(call_method):
+
             @functools.wraps(method_tp)
             async def async_wrapper(
-                    *args: MethodParamSpec.args,
-                    **kwargs: MethodParamSpec.kwargs,
+                *args: MethodParamSpec.args,
+                **kwargs: MethodParamSpec.kwargs,
             ) -> MethodResultT:
                 return cast(
                     MethodResultT,
@@ -77,8 +75,8 @@ class MethodBinder(Generic[MethodParamSpec, MethodResultT]):  # noqa: UP046
 
         @functools.wraps(method_tp)
         def sync_wrapper(
-                *args: MethodParamSpec.args,
-                **kwargs: MethodParamSpec.kwargs,
+            *args: MethodParamSpec.args,
+            **kwargs: MethodParamSpec.kwargs,
         ) -> MethodResultT:
             return cast(
                 MethodResultT,
@@ -89,6 +87,6 @@ class MethodBinder(Generic[MethodParamSpec, MethodResultT]):  # noqa: UP046
 
 
 def bind_method(  # noqa: UP047
-        method_tp: Callable[MethodParamSpec, BaseMethod[MethodResultT]],
+    method_tp: Callable[MethodParamSpec, BaseMethod[MethodResultT]],
 ) -> MethodBinder[MethodParamSpec, MethodResultT]:
     return MethodBinder(method_tp)

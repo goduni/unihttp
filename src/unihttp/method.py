@@ -22,6 +22,7 @@ class BaseMethod[ResponseType]:
         __returning__: The type class of the response (automatically extracted
                        from generic type).
     """
+
     __url__: ClassVar[str]
     __method__: ClassVar[str]
 
@@ -70,9 +71,9 @@ class BaseMethod[ResponseType]:
         )
 
     def make_response(
-            self,
-            response: HTTPResponse,
-            response_loader: ResponseLoader,
+        self,
+        response: HTTPResponse,
+        response_loader: ResponseLoader,
     ) -> ResponseType:
         """Convert an HTTPResponse into the declared ResponseType.
 

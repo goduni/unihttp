@@ -21,7 +21,7 @@ class AsyncLoggingMiddleware(AsyncMiddleware):
         self.logger = logger or logging.getLogger("unihttp")
 
     async def handle(
-            self, request: HTTPRequest, next_handler: AsyncHandler
+        self, request: HTTPRequest, next_handler: AsyncHandler
     ) -> HTTPResponse:
         self.logger.info("Request: %s %s", request.method, request.url)
         response = await next_handler(request)

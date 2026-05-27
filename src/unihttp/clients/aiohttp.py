@@ -17,14 +17,14 @@ from unihttp.serialize import RequestDumper, ResponseLoader
 
 class AiohttpAsyncClient(BaseAsyncClient):
     def __init__(
-            self,
-            base_url: str,
-            request_dumper: RequestDumper,
-            response_loader: ResponseLoader,
-            middleware: list[AsyncMiddleware] | None = None,
-            session: ClientSession | None = None,
-            json_dumps: Callable[[Any], str] = json.dumps,
-            json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
+        self,
+        base_url: str,
+        request_dumper: RequestDumper,
+        response_loader: ResponseLoader,
+        middleware: list[AsyncMiddleware] | None = None,
+        session: ClientSession | None = None,
+        json_dumps: Callable[[Any], str] = json.dumps,
+        json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
     ):
         super().__init__(
             base_url=base_url,
@@ -89,11 +89,11 @@ class AiohttpAsyncClient(BaseAsyncClient):
 
         try:
             async with self._session.request(
-                    method=request.method,
-                    url=urljoin(self.base_url, request.url),
-                    headers=request.header,
-                    params=request.query,
-                    data=data,
+                method=request.method,
+                url=urljoin(self.base_url, request.url),
+                headers=request.header,
+                params=request.query,
+                data=data,
             ) as response:
                 response_data: Any = None
                 content = await response.read()

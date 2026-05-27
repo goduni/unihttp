@@ -9,6 +9,7 @@ set shell := ["sh", "-c"]
 
 lint:
     ruff check
+    ruff format --check
 
 static-analysis:
     mypy

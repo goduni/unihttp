@@ -15,6 +15,7 @@ class HTTPResponse:
         raw_response: The original response object from the underlying client
                       (e.g., httpx.Response).
     """
+
     status_code: int
 
     headers: Mapping[str, Any]

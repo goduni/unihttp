@@ -16,8 +16,8 @@ from .omitted import OmittedSievesMarker, omitted_provider
 
 class _MethodProvider(BuiltinNameLayoutProvider):
     def __init__(
-            self,
-            marker_path_maker: MarkerFieldPathMaker,
+        self,
+        marker_path_maker: MarkerFieldPathMaker,
     ) -> None:
         super().__init__(
             sieves_maker=OmittedSievesMarker(),
@@ -28,8 +28,8 @@ class _MethodProvider(BuiltinNameLayoutProvider):
 
 
 def method_provider(
-        method_tp: type[BaseMethod[Any]] | None = None,
-        marker_path_maker: MarkerFieldPathMaker | None = None,
+    method_tp: type[BaseMethod[Any]] | None = None,
+    marker_path_maker: MarkerFieldPathMaker | None = None,
 ) -> Provider:
     if method_tp is None:
         method_tp = BaseMethod
@@ -42,5 +42,5 @@ def method_provider(
             OriginSubclassLSC(method_tp),
             _MethodProvider(marker_path_maker),
         ),
-        omitted_provider()
+        omitted_provider(),
     )

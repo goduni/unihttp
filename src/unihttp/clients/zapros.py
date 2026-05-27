@@ -26,6 +26,7 @@ def _stringify_pairs(mapping: Mapping[str, Any]) -> list[tuple[str, str]]:
     that contract so that markers like `Query[bool]`, `Form[int]` and
     `Query[list[int]]` work uniformly across backends.
     """
+
     def _value(item: Any) -> str:
         if item is None:
             return ""
@@ -85,7 +86,7 @@ def _add_file_part(multipart: Multipart, key: str, value: Any) -> None:
 
 
 def _build_multipart(
-        form: dict[str, Any] | None, files: dict[str, Any] | None
+    form: dict[str, Any] | None, files: dict[str, Any] | None
 ) -> Multipart:
     """Build a `zapros.Multipart` from form fields and file uploads."""
     multipart = Multipart()
@@ -106,14 +107,14 @@ class ZaprosSyncClient(BaseSyncClient):
     """Synchronous client implementation using the `zapros` library."""
 
     def __init__(
-            self,
-            base_url: str,
-            request_dumper: RequestDumper,
-            response_loader: ResponseLoader,
-            middleware: list[Middleware] | None = None,
-            session: Client | None = None,
-            json_dumps: Callable[[Any], str] = json.dumps,
-            json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
+        self,
+        base_url: str,
+        request_dumper: RequestDumper,
+        response_loader: ResponseLoader,
+        middleware: list[Middleware] | None = None,
+        session: Client | None = None,
+        json_dumps: Callable[[Any], str] = json.dumps,
+        json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
     ):
         super().__init__(
             base_url=base_url,
@@ -188,14 +189,14 @@ class ZaprosAsyncClient(BaseAsyncClient):
     """Asynchronous client implementation using the `zapros` library."""
 
     def __init__(
-            self,
-            base_url: str,
-            request_dumper: RequestDumper,
-            response_loader: ResponseLoader,
-            middleware: list[AsyncMiddleware] | None = None,
-            session: AsyncClient | None = None,
-            json_dumps: Callable[[Any], str] = json.dumps,
-            json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
+        self,
+        base_url: str,
+        request_dumper: RequestDumper,
+        response_loader: ResponseLoader,
+        middleware: list[AsyncMiddleware] | None = None,
+        session: AsyncClient | None = None,
+        json_dumps: Callable[[Any], str] = json.dumps,
+        json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
     ):
         super().__init__(
             base_url=base_url,

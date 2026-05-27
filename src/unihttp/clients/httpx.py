@@ -19,14 +19,14 @@ class HTTPXSyncClient(BaseSyncClient):
     """Synchronous client implementation using the `httpx` library."""
 
     def __init__(
-            self,
-            base_url: str,
-            request_dumper: RequestDumper,
-            response_loader: ResponseLoader,
-            middleware: list[Middleware] | None = None,
-            session: Client | None = None,
-            json_dumps: Callable[[Any], str] = json.dumps,
-            json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
+        self,
+        base_url: str,
+        request_dumper: RequestDumper,
+        response_loader: ResponseLoader,
+        middleware: list[Middleware] | None = None,
+        session: Client | None = None,
+        json_dumps: Callable[[Any], str] = json.dumps,
+        json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
     ):
         super().__init__(
             base_url=base_url,
@@ -110,14 +110,14 @@ class HTTPXAsyncClient(BaseAsyncClient):
     """Asynchronous client implementation using the `httpx` library."""
 
     def __init__(
-            self,
-            base_url: str,
-            request_dumper: RequestDumper,
-            response_loader: ResponseLoader,
-            middleware: list[AsyncMiddleware] | None = None,
-            session: AsyncClient | None = None,
-            json_dumps: Callable[[Any], str] = json.dumps,
-            json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
+        self,
+        base_url: str,
+        request_dumper: RequestDumper,
+        response_loader: ResponseLoader,
+        middleware: list[AsyncMiddleware] | None = None,
+        session: AsyncClient | None = None,
+        json_dumps: Callable[[Any], str] = json.dumps,
+        json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
     ):
         super().__init__(
             base_url=base_url,

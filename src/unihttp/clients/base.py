@@ -20,13 +20,14 @@ class BaseClient:
         json_dumps: Function to serialize objects to JSON strings.
         json_loads: Function to deserialize JSON strings to objects.
     """
+
     def __init__(
-            self,
-            base_url: str,
-            request_dumper: RequestDumper,
-            response_loader: ResponseLoader,
-            json_dumps: Callable[[Any], str] = json.dumps,
-            json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
+        self,
+        base_url: str,
+        request_dumper: RequestDumper,
+        response_loader: ResponseLoader,
+        json_dumps: Callable[[Any], str] = json.dumps,
+        json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
     ):
         self.base_url = base_url
         self.request_dumper = request_dumper
@@ -67,13 +68,13 @@ class BaseSyncClient(BaseClient):
     """Base class for synchronous HTTP clients."""
 
     def __init__(
-            self,
-            base_url: str,
-            request_dumper: RequestDumper,
-            response_loader: ResponseLoader,
-            middleware: list[Middleware] | None = None,
-            json_dumps: Callable[[Any], str] = json.dumps,
-            json_loads: Callable[[str | bytes | bytearray], dict | list] = json.loads,
+        self,
+        base_url: str,
+        request_dumper: RequestDumper,
+        response_loader: ResponseLoader,
+        middleware: list[Middleware] | None = None,
+        json_dumps: Callable[[Any], str] = json.dumps,
+        json_loads: Callable[[str | bytes | bytearray], dict | list] = json.loads,
     ):
         super().__init__(
             base_url=base_url,
@@ -150,13 +151,13 @@ class BaseAsyncClient(BaseClient):
     """Base class for asynchronous HTTP clients."""
 
     def __init__(
-            self,
-            base_url: str,
-            request_dumper: RequestDumper,
-            response_loader: ResponseLoader,
-            middleware: list[AsyncMiddleware] | None = None,
-            json_dumps: Callable[[Any], str] = json.dumps,
-            json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
+        self,
+        base_url: str,
+        request_dumper: RequestDumper,
+        response_loader: ResponseLoader,
+        middleware: list[AsyncMiddleware] | None = None,
+        json_dumps: Callable[[Any], str] = json.dumps,
+        json_loads: Callable[[str | bytes | bytearray], Any] = json.loads,
     ):
         super().__init__(
             base_url=base_url,

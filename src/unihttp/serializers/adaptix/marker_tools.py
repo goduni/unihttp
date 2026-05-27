@@ -50,31 +50,31 @@ def get_marker(tp: TypeHint) -> Marker | None:
 class MarkerFieldPathMaker(BuiltinStructureMaker, ABC):
     @abstractmethod
     def make(
-            self,
-            marker: Marker,
-            key_path: KeyPath,
+        self,
+        marker: Marker,
+        key_path: KeyPath,
     ) -> KeyPath:
         raise NotImplementedError
 
     def _map_fields(
-            self,
-            mediator: Mediator[BaseNameLayoutRequest[Any]],
-            request: BaseNameLayoutRequest[Any],
-            schema: StructureSchema,
-            extra_move: InpExtraMove[Any] | OutExtraMove[Any],
+        self,
+        mediator: Mediator[BaseNameLayoutRequest[Any]],
+        request: BaseNameLayoutRequest[Any],
+        schema: StructureSchema,
+        extra_move: InpExtraMove[Any] | OutExtraMove[Any],
     ) -> Iterable[FieldAndPath[Any]]:
         for field, path in super()._map_fields(
-                mediator=mediator,
-                request=request,
-                schema=schema,
-                extra_move=extra_move,
+            mediator=mediator,
+            request=request,
+            schema=schema,
+            extra_move=extra_move,
         ):
             yield self._make_with_marker(field, path)
 
     def _make_with_marker(
-            self,
-            field: BaseField,
-            key_path: KeyPath | None,
+        self,
+        field: BaseField,
+        key_path: KeyPath | None,
     ) -> FieldAndPath[Any]:
         if key_path is None:
             return field, key_path  # pragma: no cover
@@ -88,9 +88,9 @@ class MarkerFieldPathMaker(BuiltinStructureMaker, ABC):
 
 class DefaultMarkerFieldPathMaker(MarkerFieldPathMaker):
     def make(
-            self,
-            marker: Marker,
-            key_path: KeyPath,
+        self,
+        marker: Marker,
+        key_path: KeyPath,
     ) -> KeyPath:
         # if marker is Path, then ("user_id",) -> ("path", "user_id")
         # if marker is Body, then ("username",) -> ("body", "username")
@@ -99,10 +99,10 @@ class DefaultMarkerFieldPathMaker(MarkerFieldPathMaker):
 
 class ForMarkerLocStackChecker(LocStackChecker):
     def __init__(
-            self,
-            loc_stack_checker: LocStackChecker,
-            marker: type[Marker],
-            subclass: bool = False,
+        self,
+        loc_stack_checker: LocStackChecker,
+        marker: type[Marker],
+        subclass: bool = False,
     ) -> None:
         self.marker = marker
         self.subclass = subclass
@@ -110,9 +110,9 @@ class ForMarkerLocStackChecker(LocStackChecker):
 
     @override
     def check_loc_stack(
-            self,
-            mediator: DirectMediator,
-            loc_stack: LocStack[OutputFieldLoc],
+        self,
+        mediator: DirectMediator,
+        loc_stack: LocStack[OutputFieldLoc],
     ) -> bool:
         try:
             _, field_loc = find_owner_with_field(loc_stack)
@@ -135,9 +135,9 @@ class ForMarkerLocStackChecker(LocStackChecker):
 
 
 def for_marker(
-        marker: type[Marker],
-        predicate: Pred | None = None,
-        subclass: bool = False,
+    marker: type[Marker],
+    predicate: Pred | None = None,
+    subclass: bool = False,
 ) -> LocStackChecker:
     """
     for_marker predicate for adaptix recipe.

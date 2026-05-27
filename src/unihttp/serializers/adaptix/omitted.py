@@ -25,10 +25,10 @@ from adaptix._internal.provider.overlay_schema import provide_schema
 class OmittedSievesMarker(BuiltinSievesMaker):
     @override
     def make_sieves(
-            self,
-            mediator: Mediator[Any],
-            request: OutputNameLayoutRequest,
-            paths_to_leaves: PathsTo[LeafOutCrown],
+        self,
+        mediator: Mediator[Any],
+        request: OutputNameLayoutRequest,
+        paths_to_leaves: PathsTo[LeafOutCrown],
     ) -> PathsTo[Sieve]:
         schema = provide_schema(SievesOverlay, mediator, request.loc_stack)
         result = {}
@@ -36,26 +36,25 @@ class OmittedSievesMarker(BuiltinSievesMaker):
             if isinstance(leaf, OutFieldCrown):
                 field = request.shape.fields_dict[leaf.id]
                 if (
-                        field.default != NoDefault() and
-                        isinstance(field.default, DefaultValue) and
-                        isinstance(field.default.value, (Omitted, UniOmitted))
+                    field.default != NoDefault()
+                    and isinstance(field.default, DefaultValue)
+                    and isinstance(field.default.value, (Omitted, UniOmitted))
                 ) or (
-                        field.default != NoDefault()
-                        and apply_lsc(
-                    mediator,
-                    request,
-                    schema.omit_default,
-                    field,
-                )
+                    field.default != NoDefault()
+                    and apply_lsc(
+                        mediator,
+                        request,
+                        schema.omit_default,
+                        field,
+                    )
                 ):
                     result[path] = self._create_sieve(field)
         return result
 
     @override
     def _create_sieve(self, field: OutputField) -> Sieve:
-        if (
-                isinstance(field.default, DefaultValue)
-                and isinstance(field.default.value, (Omitted, UniOmitted))
+        if isinstance(field.default, DefaultValue) and isinstance(
+            field.default.value, (Omitted, UniOmitted)
         ):
             return cast(
                 "Sieve",

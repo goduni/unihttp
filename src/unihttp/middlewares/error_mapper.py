@@ -28,9 +28,7 @@ class DefaultErrorMapperMiddleware:
             return status in key
         return False
 
-    def _make_exception(
-            self, factory: ErrorFactory, response: HTTPResponse
-    ) -> Exception:
+    def _make_exception(self, factory: ErrorFactory, response: HTTPResponse) -> Exception:
         if callable(factory) and not isinstance(factory, type):
             return factory(response)
         return factory(f"HTTP {response.status_code}", response)
@@ -65,7 +63,7 @@ class AsyncErrorMapperMiddleware(DefaultErrorMapperMiddleware, AsyncMiddleware):
     """
 
     async def handle(
-            self, request: HTTPRequest, next_handler: AsyncHandler
+        self, request: HTTPRequest, next_handler: AsyncHandler
     ) -> HTTPResponse:
         response = await next_handler(request)
         self._check_status(response)

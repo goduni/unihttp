@@ -9,12 +9,12 @@ from unihttp.middlewares.base import AsyncHandler, AsyncMiddleware, Handler, Mid
 
 class RetryMiddleware(Middleware):
     def __init__(
-            self,
-            retries: int = 3,
-            backoff: float = 1.0,
-            status_codes: list[int] | None = None,
-            exceptions: list[type[Exception]] | None = None,
-            jitter: bool = True,
+        self,
+        retries: int = 3,
+        backoff: float = 1.0,
+        status_codes: list[int] | None = None,
+        exceptions: list[type[Exception]] | None = None,
+        jitter: bool = True,
     ):
         self.retries = retries
         self.backoff = backoff
@@ -34,9 +34,9 @@ class RetryMiddleware(Middleware):
             except Exception as e:
                 # If exception is retryable
                 if (
-                    self.exceptions and
-                    isinstance(e, tuple(self.exceptions)) and
-                    attempt < self.retries
+                    self.exceptions
+                    and isinstance(e, tuple(self.exceptions))
+                    and attempt < self.retries
                 ):
                     self._sleep(attempt)
                     attempt += 1
@@ -46,7 +46,7 @@ class RetryMiddleware(Middleware):
             return response
 
     def _sleep(self, attempt: int) -> None:
-        sleep_time = self.backoff * (2 ** attempt)
+        sleep_time = self.backoff * (2**attempt)
         if self.jitter:
             sleep_time += random.uniform(0, 1)
         time.sleep(sleep_time)
@@ -54,12 +54,12 @@ class RetryMiddleware(Middleware):
 
 class AsyncRetryMiddleware(AsyncMiddleware):
     def __init__(
-            self,
-            retries: int = 3,
-            backoff: float = 1.0,
-            status_codes: list[int] | None = None,
-            exceptions: list[type[Exception]] | None = None,
-            jitter: bool = True,
+        self,
+        retries: int = 3,
+        backoff: float = 1.0,
+        status_codes: list[int] | None = None,
+        exceptions: list[type[Exception]] | None = None,
+        jitter: bool = True,
     ):
         self.retries = retries
         self.backoff = backoff
@@ -80,9 +80,9 @@ class AsyncRetryMiddleware(AsyncMiddleware):
                     continue
             except Exception as e:
                 if (
-                    self.exceptions and
-                    isinstance(e, tuple(self.exceptions)) and
-                    attempt < self.retries
+                    self.exceptions
+                    and isinstance(e, tuple(self.exceptions))
+                    and attempt < self.retries
                 ):
                     await self._sleep(attempt)
                     attempt += 1
@@ -92,7 +92,7 @@ class AsyncRetryMiddleware(AsyncMiddleware):
             return response
 
     async def _sleep(self, attempt: int) -> None:
-        sleep_time = self.backoff * (2 ** attempt)
+        sleep_time = self.backoff * (2**attempt)
         if self.jitter:
             sleep_time += random.uniform(0, 1)
         await asyncio.sleep(sleep_time)

@@ -44,11 +44,11 @@ class PydanticDumper(RequestDumper):
         return data
 
     def _process_field(
-            self,
-            data: dict[str, Any],
-            field_name: str,
-            field_value: Any,
-            hint: Any,
+        self,
+        data: dict[str, Any],
+        field_name: str,
+        field_value: Any,
+        hint: Any,
     ) -> None:
         if isinstance(field_value, Omitted):
             return

@@ -9,5 +9,5 @@ __all__ = [
     "AdaptixLoader",
     "for_marker",
     "method_provider",
-    "omitted_provider"
+    "omitted_provider",
 ]
