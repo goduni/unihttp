@@ -28,6 +28,7 @@
 - [Custom JSON Serialization](#custom-json-serialization)
 - [Powered by Adaptix](#powered-by-adaptix)
 - [Pydantic Integration](#pydantic-integration)
+- [msgspec Integration](#msgspec-integration)
 
 ## Features
 
@@ -62,10 +63,11 @@ pip install "unihttp[zapros]"   # For Zapros (Sync/Async) support
 
 1. **Adaptix** (recommended): High-performance serialization for standard Python types (dataclasses, TypedDict).
 2. **Pydantic**: Native support for Pydantic models.
+3. **msgspec**: Native support for `msgspec.Struct` models — ideal if you already define your models as structs and want them serialized directly.
 
 You will need to pass the appropriate `request_dumper` and `response_loader` when initializing your client.
-See [Powered by Adaptix](#powered-by-adaptix) or [Pydantic Integration](#pydantic-integration) for configuration
-details.
+See [Powered by Adaptix](#powered-by-adaptix), [Pydantic Integration](#pydantic-integration) or
+[msgspec Integration](#msgspec-integration) for configuration details.
 
 ## Quick Start
 
@@ -349,5 +351,54 @@ client = RequestsSyncClient(
 )
 
 # Now standard Pydantic models are serialized/validated automatically
+client.call_method(CreateUser(user=User(id=1, name="Alice")))
+```
+
+## msgspec Integration
+
+If your models are already defined as [`msgspec`](https://github.com/jcrist/msgspec) structs, `unihttp` can serialize and validate them directly — no need to duplicate them as Pydantic or adaptix models.
+
+First, install the optional dependency:
+
+```bash
+pip install "unihttp[msgspec]"
+```
+
+Then, configure your client to use the msgspec serializers:
+
+```python
+from dataclasses import dataclass
+
+import msgspec
+from unihttp.clients.requests import RequestsSyncClient
+from unihttp.markers import Body
+from unihttp.method import BaseMethod
+from unihttp.serializers.msgspec import MsgspecDumper, MsgspecLoader
+
+
+class User(msgspec.Struct):
+    id: int
+    name: str
+
+
+@dataclass
+class CreateUser(BaseMethod[User]):
+    __url__ = "/users"
+    __method__ = "POST"
+
+    user: Body[User]
+
+
+# Initialize serializers
+dumper = MsgspecDumper()
+loader = MsgspecLoader()
+
+client = RequestsSyncClient(
+    base_url="https://api.example.org",
+    request_dumper=dumper,
+    response_loader=loader
+)
+
+# Now msgspec structs are serialized/validated automatically
 client.call_method(CreateUser(user=User(id=1, name="Alice")))
 ```

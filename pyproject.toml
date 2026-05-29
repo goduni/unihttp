@@ -47,6 +47,7 @@ niquests = ["niquests>=3.17.0"]
 zapros = ["zapros>=0.11.0"]
 pydantic = ["pydantic>=2.0.0"]
 adaptix = ["adaptix>=3.0.0b12"]
+msgspec = ["msgspec>=0.18.0"]
 
 
 [dependency-groups]
@@ -57,7 +58,8 @@ optionals = [
     "unihttp[niquests]",
     "unihttp[zapros]",
     "unihttp[pydantic]",
-    "unihttp[adaptix]"
+    "unihttp[adaptix]",
+    "unihttp[msgspec]"
 ]
 
 lint = [

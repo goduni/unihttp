@@ -5,6 +5,7 @@ from unihttp.method import BaseMethod
 from unihttp.markers import Body
 from unihttp.omitted import Omitted
 from unihttp.serializers.adaptix import DEFAULT_RETORT
+from unihttp.serializers.msgspec import MsgspecDumper
 from unihttp.serializers.pydantic import PydanticDumper
 
 @dataclass
@@ -49,4 +50,18 @@ def test_adaptix_omitted_handling():
     # Case 2: Provided value -> key should be present
     method = OmittedMethod(optional_field="present")
     dumped = retort.dump(method)
+    assert dumped["body"]["optional_field"] == "present"
+
+def test_msgspec_omitted_handling():
+    dumper = MsgspecDumper()
+
+    # Case 1: Default (Omitted) -> key should be absent
+    method = OmittedMethod()
+    dumped = dumper.dump(method)
+    assert "optional_field" not in dumped["body"]
+    assert dumped["body"]["mandatory_field"] == "mandatory"
+
+    # Case 2: Provided value -> key should be present
+    method = OmittedMethod(optional_field="present")
+    dumped = dumper.dump(method)
     assert dumped["body"]["optional_field"] == "present"
