@@ -63,6 +63,7 @@ optionals = [
 lint = [
     "mypy==1.17.1",
     "ruff==0.12.12",
+    "types-requests>=2.32.0",
 ]
 
 tests = [

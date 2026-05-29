@@ -1,7 +1,7 @@
 from typing import Any
 from urllib.parse import urljoin
 
-import requests  # type: ignore[import-untyped]
+import requests
 from requests import Session
 
 from unihttp.clients.base import BaseSyncClient
