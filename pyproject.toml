@@ -48,6 +48,11 @@ zapros = ["zapros>=0.11.0"]
 pydantic = ["pydantic>=2.0.0"]
 adaptix = ["adaptix>=3.0.0b12"]
 msgspec = ["msgspec>=0.18.0"]
+generator = [
+    "jinja2>=3.1.6",
+    "pyyaml>=6.0.3",
+    "ruff>=0.12.12",
+]
 
 
 [dependency-groups]
@@ -59,7 +64,8 @@ optionals = [
     "unihttp[zapros]",
     "unihttp[pydantic]",
     "unihttp[adaptix]",
-    "unihttp[msgspec]"
+    "unihttp[msgspec]",
+    "unihttp[generator]",
 ]
 
 lint = [
