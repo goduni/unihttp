@@ -5,6 +5,7 @@ from unihttp.http.response import HTTPResponse
 
 from unihttp.clients.requests import RequestsSyncClient
 from unihttp.clients.httpx import HTTPXSyncClient, HTTPXAsyncClient
+from unihttp.clients.httpx2 import HTTPX2SyncClient, HTTPX2AsyncClient
 from unihttp.clients.aiohttp import AiohttpAsyncClient
 from unihttp.clients.niquests import NiquestsSyncClient, NiquestsAsyncClient
 
@@ -51,6 +52,35 @@ async def test_httpx_async_json_error(mock_request, mock_request_dumper, mock_re
     mock_session.request.return_value = mock_response
     
     client = HTTPXAsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_session)
+    response = await client.make_request(mock_request)
+    assert response.data == b"not json"
+
+def test_httpx2_sync_json_error(mock_request, mock_request_dumper, mock_response_loader):
+    mock_session = Mock()
+    mock_response = Mock()
+    mock_response.content = b"not json"
+    mock_response.text = "not json"
+    mock_response.status_code = 200
+    mock_response.headers = {}
+    mock_response.cookies = {}
+    mock_session.request.return_value = mock_response
+
+    client = HTTPX2SyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_session)
+    response = client.make_request(mock_request)
+    assert response.data == b"not json"
+
+@pytest.mark.asyncio
+async def test_httpx2_async_json_error(mock_request, mock_request_dumper, mock_response_loader):
+    mock_session = AsyncMock()
+    mock_response = Mock()
+    mock_response.content = b"not json"
+    mock_response.text = "not json"
+    mock_response.status_code = 200
+    mock_response.headers = {}
+    mock_response.cookies = {}
+    mock_session.request.return_value = mock_response
+
+    client = HTTPX2AsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_session)
     response = await client.make_request(mock_request)
     assert response.data == b"not json"
 
