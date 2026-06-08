@@ -108,3 +108,5 @@ exclude_also = [
     "pass",
     '\.\.\.',
 ]
+[tool.ruff]
+exclude = [".github"]
