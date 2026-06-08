@@ -41,6 +41,7 @@ Issues = "https://github.com/goduni/unihttp/issues"
 
 [project.optional-dependencies]
 httpx = ["httpx>=0.28.1"]
+httpx2 = ["httpx2>=2.0.0"]
 requests = ["requests>=2.32.0"]
 aiohttp = ["aiohttp>=3.10.0"]
 niquests = ["niquests>=3.17.0"]
@@ -53,6 +54,7 @@ msgspec = ["msgspec>=0.18.0"]
 [dependency-groups]
 optionals = [
     "unihttp[httpx]",
+    "unihttp[httpx2]",
     "unihttp[requests]",
     "unihttp[aiohttp]",
     "unihttp[niquests]",
