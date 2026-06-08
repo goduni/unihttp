@@ -1,35 +1,20 @@
-#!/usr/bin/env python3
-"""
-Converts claude-code-security-review findings JSON to SARIF 2.1.0
-for upload to GitHub Security → Code scanning tab.
-
-Usage:
-  python convert_to_sarif.py <results.json> <output.sarif>
-"""
-
 import json
 import sys
-from datetime import datetime, timezone
-
-SEVERITY_MAP = {
-    "CRITICAL": "error",
-    "HIGH":     "error",
-    "MEDIUM":   "warning",
-    "LOW":      "note",
-}
+from datetime import UTC, datetime
+from pathlib import Path
 
 LEVEL_MAP = {
     "CRITICAL": "error",
-    "HIGH":     "error",
-    "MEDIUM":   "warning",
-    "LOW":      "note",
+    "HIGH": "error",
+    "MEDIUM": "warning",
+    "LOW": "note",
 }
 
 SECURITY_SEVERITY_MAP = {
     "CRITICAL": "9.5",
-    "HIGH":     "7.5",
-    "MEDIUM":   "5.0",
-    "LOW":      "3.0",
+    "HIGH": "7.5",
+    "MEDIUM": "5.0",
+    "LOW": "3.0",
 }
 
 
@@ -46,7 +31,6 @@ def findings_to_sarif(findings: list, repo: str = "") -> dict:
         recommendation = finding.get("recommendation", "")
         exploit = finding.get("exploit_scenario", "")
 
-        # Build rule entry (deduplicated)
         if rule_id not in rules:
             rules[rule_id] = {
                 "id": rule_id,
@@ -62,53 +46,52 @@ def findings_to_sarif(findings: list, repo: str = "") -> dict:
                 },
             }
 
-        # Build message
         message_parts = [description]
         if exploit:
             message_parts.append(f"Exploit scenario: {exploit}")
         if recommendation:
             message_parts.append(f"Recommendation: {recommendation}")
-        message_text = "\n\n".join(message_parts)
 
         results.append({
             "ruleId": rule_id,
             "level": LEVEL_MAP.get(severity, "warning"),
-            "message": {"text": message_text},
+            "message": {"text": "\n\n".join(message_parts)},
             "locations": [{
                 "physicalLocation": {
                     "artifactLocation": {
                         "uri": file_path,
                         "uriBaseId": "%SRCROOT%",
                     },
-                    "region": {
-                        "startLine": max(1, line),
-                    },
+                    "region": {"startLine": max(1, line)},
                 }
             }],
-            "properties": {
-                "severity": severity,
-            },
+            "properties": {"severity": severity},
         })
 
-    sarif = {
-        "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+    date_str = datetime.now(UTC).strftime("%Y-%m-%d")
+    return {
+        "$schema": (
+            "https://raw.githubusercontent.com/oasis-tcs/sarif-spec"
+            "/master/Schemata/sarif-schema-2.1.0.json"
+        ),
         "version": "2.1.0",
         "runs": [{
             "tool": {
                 "driver": {
                     "name": "claude-code-security-review",
                     "version": "1.0.0",
-                    "informationUri": "https://github.com/anthropics/claude-code-security-review",
+                    "informationUri": (
+                        "https://github.com/anthropics/claude-code-security-review"
+                    ),
                     "rules": list(rules.values()),
                 }
             },
             "results": results,
             "automationDetails": {
-                "id": f"claude-security/{datetime.now(timezone.utc).strftime('%Y-%m-%d')}",
+                "id": f"claude-security/{date_str}",
             },
         }],
     }
-    return sarif
 
 
 def main():
@@ -116,15 +99,12 @@ def main():
         print(f"Usage: {sys.argv[0]} <results.json> <output.sarif>")
         sys.exit(1)
 
-    input_path = sys.argv[1]
-    output_path = sys.argv[2]
+    input_path = Path(sys.argv[1])
+    output_path = Path(sys.argv[2])
 
-    with open(input_path) as f:
+    with input_path.open(encoding="utf-8") as f:
         data = json.load(f)
 
-    # Support both formats:
-    # 1. {"findings": [...], ...}  (claudecode-results.json)
-    # 2. [...]                     (findings.json)
     if isinstance(data, list):
         findings = data
         repo = ""
@@ -134,10 +114,10 @@ def main():
 
     sarif = findings_to_sarif(findings, repo)
 
-    with open(output_path, "w") as f:
+    with output_path.open("w", encoding="utf-8") as f:
         json.dump(sarif, f, indent=2)
 
-    print(f"✅ Converted {len(findings)} findings → {output_path}")
+    print(f"Converted {len(findings)} findings -> {output_path}")
 
 
 if __name__ == "__main__":
