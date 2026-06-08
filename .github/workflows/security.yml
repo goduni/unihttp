@@ -34,11 +34,13 @@ jobs:
       - name: Convert findings to SARIF
         if: always()
         run: |
-          echo "Results file: ${{ steps.claude-scan.outputs.results-file }}"
-          ls -la ${{ steps.claude-scan.outputs.results-file }} || echo "File not found"
-          python .github/convert_to_sarif.py \
-            ${{ steps.claude-scan.outputs.results-file }} \
-            security-results.sarif
+          RESULTS="${{ steps.claude-scan.outputs.results-file }}"
+          if [ -f "$RESULTS" ]; then
+            python .github/convert_to_sarif.py "$RESULTS" security-results.sarif
+          else
+            echo '{"version":"2.1.0","$schema":"https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json","runs":[{"tool":{"driver":{"name":"claude-code-security-review","rules":[]}},"results":[]}]}' > security-results.sarif
+            echo "No findings file, created empty SARIF"
+          fi
 
       - name: Upload SARIF to GitHub Security tab
         if: always()
