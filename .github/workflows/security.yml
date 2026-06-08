@@ -31,19 +31,18 @@ jobs:
           upload-results: true
           claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
 
-      # Конвертация JSON → SARIF
       - name: Convert findings to SARIF
         if: always()
         run: |
-         
+          echo "Results file: ${{ steps.claude-scan.outputs.results-file }}"
+          ls -la ${{ steps.claude-scan.outputs.results-file }} || echo "File not found"
           python .github/convert_to_sarif.py \
             ${{ steps.claude-scan.outputs.results-file }} \
             security-results.sarif
 
- 
       - name: Upload SARIF to GitHub Security tab
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: security-results.sarif
           category: claude-security-review
