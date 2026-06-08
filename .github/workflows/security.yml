@@ -1,0 +1,49 @@
+name: Security Review
+
+permissions:
+  pull-requests: write   # комментарии к PR
+  contents: read
+  security-events: write # загрузка SARIF в Security tab
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  schedule:
+    - cron: '0 2 * * 1'  # каждый понедельник в 2:00 UTC
+  workflow_dispatch:
+
+jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 2
+
+      # Запуск security review
+      - name: Claude Security Review
+        id: claude-scan
+        uses: anthropics/claude-code-security-review@main
+        with:
+          comment-pr: ${{ github.event_name == 'pull_request' }}
+          upload-results: true
+          claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
+
+      # Конвертация JSON → SARIF
+      - name: Convert findings to SARIF
+        if: always()
+        run: |
+          # Скачиваем конвертер (положи файл в .github/scripts/ своего репо)
+          python .github/scripts/convert_to_sarif.py \
+            ${{ steps.claude-scan.outputs.results-file }} \
+            security-results.sarif
+
+      # Загрузка в Security → Code scanning
+      - name: Upload SARIF to GitHub Security tab
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: security-results.sarif
+          category: claude-security-review
