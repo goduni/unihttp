@@ -1,0 +1,4 @@
+interface:
+  display_name: "unihttp client generator"
+  short_description: "Generate a typed, packaged unihttp API client (SDK) from an OpenAPI spec or an API description"
+  default_prompt: "Use $unihttp-client to scaffold a packaged, type-safe unihttp API client from an OpenAPI 3.x spec or a plain API description."

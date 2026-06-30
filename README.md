@@ -29,6 +29,7 @@
 - [Powered by Adaptix](#powered-by-adaptix)
 - [Pydantic Integration](#pydantic-integration)
 - [msgspec Integration](#msgspec-integration)
+- [Agent Skills](#agent-skills)
 
 ## Features
 
@@ -404,3 +405,31 @@ client = RequestsSyncClient(
 # Now msgspec structs are serialized/validated automatically
 client.call_method(CreateUser(user=User(id=1, name="Alice")))
 ```
+
+## Agent Skills
+
+`unihttp` ships **agent skills** that teach AI coding agents (Claude Code, Codex,
+etc.) to write idiomatic unihttp code and to **generate a fully typed, packaged
+client SDK** from an OpenAPI 3.x spec or a plain API description. They live in
+[`.agents/skills/`](.agents/skills/) and are packaged as a Claude Code plugin.
+
+Install them in Claude Code:
+
+```bash
+claude plugin marketplace add goduni/unihttp
+claude plugin install unihttp@unihttp
+```
+
+(or run `/plugin` inside Claude Code for the interactive installer). Verify with
+`claude plugin details unihttp` — you should see `Skills (2)`.
+
+This adds two skills:
+
+- **`unihttp`** — best practices for idiomatic, type-safe unihttp clients: imports,
+  markers, serializers, error handling, middleware, and the async client lifecycle.
+- **`unihttp-client`** — scaffold a packaged unihttp API client (typed models,
+  methods, a client, `ruff`/`mypy` config, and tests) from an OpenAPI spec or an
+  API description.
+
+Agents that follow the `.agents/` convention (e.g. Codex) can use the same skills
+directly from the repository without the plugin step.

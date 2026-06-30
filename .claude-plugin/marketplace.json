@@ -1,0 +1,19 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "unihttp",
+  "owner": {
+    "name": "goduni",
+    "url": "https://github.com/goduni"
+  },
+  "metadata": {
+    "description": "Agent skills shipped with unihttp",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "unihttp",
+      "source": ".",
+      "description": "Write idiomatic unihttp client code and generate typed unihttp client packages (SDKs) from an OpenAPI spec or an API description"
+    }
+  ]
+}

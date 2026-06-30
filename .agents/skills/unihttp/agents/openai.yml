@@ -1,0 +1,4 @@
+interface:
+  display_name: "unihttp best practices"
+  short_description: "Write the best unihttp client code with all the recommended best practices, avoiding common mistakes"
+  default_prompt: "Use $unihttp skill when writing API clients with unihttp to increase code quality and follow the best practices"

@@ -1,0 +1,10 @@
+{
+  "name": "unihttp",
+  "description": "Skills for writing idiomatic unihttp clients and generating typed unihttp client packages (SDKs)",
+  "version": "0.1.0",
+  "author": {
+    "name": "Universe Interface",
+    "url": "https://github.com/goduni"
+  },
+  "skills": "./.agents/skills"
+}
