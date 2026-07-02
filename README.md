@@ -413,7 +413,15 @@ etc.) to write idiomatic unihttp code and to **generate a fully typed, packaged
 client SDK** from an OpenAPI 3.x spec or a plain API description. They live in
 [`.agents/skills/`](.agents/skills/) and are packaged as a Claude Code plugin.
 
-Install them in Claude Code:
+The bundle adds two skills:
+
+- **`unihttp`** — best practices for idiomatic, type-safe unihttp clients: imports,
+  markers, serializers, error handling, middleware, and the async client lifecycle.
+- **`unihttp-client`** — scaffold a packaged unihttp API client (typed models,
+  methods, a client, `ruff`/`mypy` config, and tests) from an OpenAPI spec or an
+  API description.
+
+### Install in Claude Code (plugin)
 
 ```bash
 claude plugin marketplace add goduni/unihttp
@@ -423,13 +431,41 @@ claude plugin install unihttp@unihttp
 (or run `/plugin` inside Claude Code for the interactive installer). Verify with
 `claude plugin details unihttp` — you should see `Skills (2)`.
 
-This adds two skills:
+### Install in Codex
 
-- **`unihttp`** — best practices for idiomatic, type-safe unihttp clients: imports,
-  markers, serializers, error handling, middleware, and the async client lifecycle.
-- **`unihttp-client`** — scaffold a packaged unihttp API client (typed models,
-  methods, a client, `ruff`/`mypy` config, and tests) from an OpenAPI spec or an
-  API description.
+Codex discovers skills in `.agents/skills/` — scanned from your working directory
+up to the repo root — and in the user-level `~/.agents/skills/`. Copy the two skill
+directories into whichever scope you want:
 
-Agents that follow the `.agents/` convention (e.g. Codex) can use the same skills
-directly from the repository without the plugin step.
+```bash
+git clone https://github.com/goduni/unihttp /tmp/unihttp
+
+# per-project — checked in alongside your repo:
+mkdir -p .agents/skills
+cp -r /tmp/unihttp/.agents/skills/unihttp        .agents/skills/
+cp -r /tmp/unihttp/.agents/skills/unihttp-client .agents/skills/
+
+# or user-wide — available in every repo:
+mkdir -p ~/.agents/skills
+cp -r /tmp/unihttp/.agents/skills/unihttp        ~/.agents/skills/
+cp -r /tmp/unihttp/.agents/skills/unihttp-client ~/.agents/skills/
+```
+
+Or just run Codex from inside a checkout of the unihttp repo — `.agents/skills/`
+is already there. Each skill's `agents/openai.yml` adds Codex-specific display
+metadata.
+
+### Install manually (any skills-aware agent)
+
+Skills are just directories containing a `SKILL.md`, so you can drop them into any
+agent's skills folder. For Claude Code's personal skills that folder is
+`~/.claude/skills/`:
+
+```bash
+git clone https://github.com/goduni/unihttp /tmp/unihttp
+mkdir -p ~/.claude/skills
+cp -r /tmp/unihttp/.agents/skills/unihttp ~/.claude/skills/
+cp -r /tmp/unihttp/.agents/skills/unihttp-client ~/.claude/skills/
+```
+
+Restart the agent (or reload its skills) and both skills become available.
