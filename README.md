@@ -421,7 +421,21 @@ The bundle adds two skills:
   methods, a client, `ruff`/`mypy` config, and tests) from an OpenAPI spec or an
   API description.
 
-### Install in Claude Code (plugin)
+### Quick install (recommended)
+
+One command installs both skills for whatever agent you use — Claude Code, Codex,
+and many others. Run it from your project root, then restart the agent:
+
+```bash
+npx skills add goduni/unihttp
+```
+
+It clones the repo and writes the skills into `.agents/skills/` (symlinking them
+into Claude Code's skills directory), so the same command works cross-agent.
+
+### Claude Code plugin
+
+Prefer a managed plugin? Install the packaged version instead:
 
 ```bash
 claude plugin marketplace add goduni/unihttp
@@ -431,40 +445,22 @@ claude plugin install unihttp@unihttp
 (or run `/plugin` inside Claude Code for the interactive installer). Verify with
 `claude plugin details unihttp` — you should see `Skills (2)`.
 
-### Install in Codex
+### Manual install
 
-Codex discovers skills in `.agents/skills/` — scanned from your working directory
-up to the repo root — and in the user-level `~/.agents/skills/`. Copy the two skill
-directories into whichever scope you want:
+Skills are just directories containing a `SKILL.md`, so you can also copy them into
+whatever folder your agent scans:
 
 ```bash
 git clone https://github.com/goduni/unihttp /tmp/unihttp
 
-# per-project — checked in alongside your repo:
+# Codex and most agents — per-project .agents/skills/ (or user-wide ~/.agents/skills/):
 mkdir -p .agents/skills
 cp -r /tmp/unihttp/.agents/skills/unihttp        .agents/skills/
 cp -r /tmp/unihttp/.agents/skills/unihttp-client .agents/skills/
 
-# or user-wide — available in every repo:
-mkdir -p ~/.agents/skills
-cp -r /tmp/unihttp/.agents/skills/unihttp        ~/.agents/skills/
-cp -r /tmp/unihttp/.agents/skills/unihttp-client ~/.agents/skills/
-```
-
-Or just run Codex from inside a checkout of the unihttp repo — `.agents/skills/`
-is already there. Each skill's `agents/openai.yml` adds Codex-specific display
-metadata.
-
-### Install manually (any skills-aware agent)
-
-Skills are just directories containing a `SKILL.md`, so you can drop them into any
-agent's skills folder. For Claude Code's personal skills that folder is
-`~/.claude/skills/`:
-
-```bash
-git clone https://github.com/goduni/unihttp /tmp/unihttp
+# Claude Code personal skills:
 mkdir -p ~/.claude/skills
-cp -r /tmp/unihttp/.agents/skills/unihttp ~/.claude/skills/
+cp -r /tmp/unihttp/.agents/skills/unihttp        ~/.claude/skills/
 cp -r /tmp/unihttp/.agents/skills/unihttp-client ~/.claude/skills/
 ```
 
