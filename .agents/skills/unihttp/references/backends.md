@@ -14,6 +14,7 @@ base class and the install extra change.
 | requests  | `RequestsSyncClient` | —                     | `unihttp[requests]`  |
 | niquests  | `NiquestsSyncClient` | `NiquestsAsyncClient` | `unihttp[niquests]`  |
 | zapros    | `ZaprosSyncClient`   | `ZaprosAsyncClient`   | `unihttp[zapros]`    |
+| urllib    | `UrllibSyncClient`   | —                     | — (standard library) |
 
 Import the class from its module, e.g.
 `from unihttp.clients.aiohttp import AiohttpAsyncClient`.
@@ -27,6 +28,9 @@ Import the class from its module, e.g.
 - **`httpx`** when you want one library that does both sync and async, or HTTP/2.
 - **`niquests`** as a drop-in `requests` successor with sync + async.
 - **`zapros`** when the project already standardizes on it.
+- **`urllib`** (`UrllibSyncClient`) when you cannot add any third-party
+  dependency — it is powered entirely by the standard library. Prefer a real
+  backend for demanding workloads (connection pooling, HTTP/2, async).
 
 ## Sync vs async consequences
 
