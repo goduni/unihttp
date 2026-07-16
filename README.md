@@ -35,7 +35,7 @@
 
 - **Declarative**: Define API methods using standard Python type hints.
 - **Type-Safe**: Full support for static type checking.
-- **Backend Agnostic**: Works with `httpx`, `httpx2`, `aiohttp`, `requests`, `niquests` and `zapros`.
+- **Backend Agnostic**: Works with `httpx`, `httpx2`, `aiohttp`, `requests`, `niquests`, `zapros` and the standard library `urllib`.
 - **Extensible**: Powerful middleware and error handling systems.
 
 ## Installation
@@ -59,6 +59,10 @@ pip install "unihttp[aiohttp]"  # For Aiohttp (Async) support
 # OR
 pip install "unihttp[zapros]"   # For Zapros (Sync/Async) support
 ```
+
+The standard library `urllib` backend (`UrllibSyncClient`) requires no extra —
+it works out of the box with a plain `pip install unihttp`, which is handy for
+dependency-free environments.
 
 ## Serialization Backends
 

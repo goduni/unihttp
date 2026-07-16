@@ -8,6 +8,7 @@ import pytest
 from unihttp.clients.aiohttp import AiohttpAsyncClient
 from unihttp.clients.httpx import HTTPXAsyncClient
 from unihttp.clients.requests import RequestsSyncClient
+from unihttp.clients.urllib import UrllibSyncClient
 from unihttp.clients.zapros import ZaprosAsyncClient
 from unihttp.method import BaseMethod
 from unihttp.serialize import RequestDumper, ResponseLoader
@@ -104,3 +105,15 @@ def test_requests_real_echo(integration_server, real_dumper, real_loader):
 
         assert result["body"] == {"sync": "true"}
         assert result["headers"]["X-Test"] == "requests"
+
+
+@pytest.mark.skip(reason="Sync client blocks the event loop of the async server fixture")
+def test_urllib_real_echo(integration_server, real_dumper, real_loader):
+    base_url = str(integration_server.make_url("/"))
+
+    with UrllibSyncClient(base_url, real_dumper, real_loader) as client:
+        method = EchoMethod(body={"sync": "true"}, headers={"X-Test": "urllib"})
+        result = client.call_method(method)
+
+        assert result["body"] == {"sync": "true"}
+        assert result["headers"]["X-Test"] == "urllib"
