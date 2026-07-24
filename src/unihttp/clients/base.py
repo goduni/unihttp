@@ -160,9 +160,7 @@ class BaseSyncClient(BaseClient):
         """
         raise NotImplementedError
 
-    def call_method_stream(
-        self, method: StreamMethod, chunk_size: int = 65536
-    ) -> ChunkStream:
+    def call_method_stream(self, method: StreamMethod) -> ChunkStream:
         """Execute a streaming API method synchronously.
 
         Pipeline mirrors `call_method`, but the terminal handler streams the
@@ -170,7 +168,8 @@ class BaseSyncClient(BaseClient):
 
         Args:
             method: The stream method instance to execute.
-            chunk_size: Number of bytes to read per chunk.
+                `method.__chunk_size__` controls how many bytes are read per
+                chunk.
 
         Returns:
             A `ChunkStream` of `bytes` chunks. Use as a context manager
@@ -181,7 +180,9 @@ class BaseSyncClient(BaseClient):
         request = method.build_http_request(request_dumper=self.request_dumper)
 
         def _send(request_: HTTPRequest) -> HTTPResponse[ChunkStream]:
-            response_ = self.stream_make_request(request_, chunk_size=chunk_size)
+            response_ = self.stream_make_request(
+                request_, chunk_size=method.__chunk_size__
+            )
 
             if not response_.ok:
                 # ChunkStream.close() is a direct call, not tied to whether
@@ -295,9 +296,7 @@ class BaseAsyncClient(BaseClient):
         """
         raise NotImplementedError
 
-    async def call_method_stream(
-        self, method: StreamMethod, chunk_size: int = 65536
-    ) -> AsyncChunkStream:
+    async def call_method_stream(self, method: StreamMethod) -> AsyncChunkStream:
         """Execute a streaming API method asynchronously.
 
         Pipeline mirrors `call_method`, but the terminal handler streams the
@@ -305,7 +304,8 @@ class BaseAsyncClient(BaseClient):
 
         Args:
             method: The stream method instance to execute.
-            chunk_size: Number of bytes to read per chunk.
+                `method.__chunk_size__` controls how many bytes are read per
+                chunk.
 
         Returns:
             An `AsyncChunkStream` of `bytes` chunks. Use as a context
@@ -316,7 +316,9 @@ class BaseAsyncClient(BaseClient):
         request = method.build_http_request(request_dumper=self.request_dumper)
 
         async def _send(request_: HTTPRequest) -> HTTPResponse[AsyncChunkStream]:
-            response_ = await self.stream_make_request(request_, chunk_size=chunk_size)
+            response_ = await self.stream_make_request(
+                request_, chunk_size=method.__chunk_size__
+            )
 
             if not response_.ok:
                 # AsyncChunkStream.aclose() is a direct call, not tied to

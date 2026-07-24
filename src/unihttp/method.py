@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from types import get_original_bases
 from typing import Any, ClassVar, TypeVar, get_args
 
@@ -147,4 +147,9 @@ class StreamMethod(RequestMethod):
     (e.g. file downloads) rather than buffered and parsed. There is no
     `response_loader`/`make_response` step here: the body is never fully
     read, so there is nothing to deserialize.
+
+    Attributes:
+        __chunk_size__: Number of bytes to read per chunk.
     """
+
+    __chunk_size__: int = field(default=65536, kw_only=True)
