@@ -10,34 +10,16 @@ ResponseType = TypeVar("ResponseType", bound=Any)
 
 
 @dataclass
-class BaseMethod[ResponseType]:
+class RequestMethod:
     """Base class for defining API methods.
-
-    Subclasses represent specific API endpoints.
-    Type parameter `ResponseType` specifies the expected return type.
 
     Attributes:
         __url__: The URL path pattern (e.g., "/users/{id}").
         __method__: The HTTP method (e.g., "GET").
-        __returning__: The type class of the response (automatically extracted
-                       from generic type).
     """
 
     __url__: ClassVar[str]
     __method__: ClassVar[str]
-
-    __returning__: ClassVar[type]
-
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-
-        for base in get_original_bases(cls):
-            origin = getattr(base, "__origin__", None)
-
-            if origin is not None and issubclass(origin, BaseMethod):
-                if args := get_args(base):
-                    cls.__returning__ = args[0]
-                break
 
     def build_http_request(self, request_dumper: RequestDumper) -> HTTPRequest:
         """Convert this method instance into an HTTPRequest.
@@ -47,6 +29,9 @@ class BaseMethod[ResponseType]:
 
         Returns:
             HTTPRequest: The constructed HTTP request object.
+
+        Raises:
+            ValueError: if more than one of `raw`/`body`/`(form or file)` is set.
         """
         data = request_dumper.dump(self)
 
@@ -57,6 +42,17 @@ class BaseMethod[ResponseType]:
         file_data = data.get("file", {})
         form_data = data.get("form", {})
         raw_data = data.get("raw", None)
+
+        if raw_data is not None and (body_data or form_data or file_data):
+            raise ValueError(
+                "Cannot use Raw with Body, Form or File. "
+                "Raw is a standalone raw request body."
+            )
+        if body_data and (form_data or file_data):
+            raise ValueError(
+                "Cannot use Body with Form or File. "
+                "Use Form for fields in multipart requests."
+            )
 
         url = self.__url__.format(**path_data)
 
@@ -71,6 +67,47 @@ class BaseMethod[ResponseType]:
             form=form_data,
             raw=raw_data,
         )
+
+    def on_error(self, response: HTTPResponse) -> None:
+        """Handle HTTP status errors for this specific method.
+
+        Override to provide custom error handling for this endpoint.
+        Called when response.ok is False.
+
+        Args:
+            response: The HTTP response with error status. For `StreamMethod`,
+                only `status_code`/`headers` are available — the body is
+                never buffered for a streamed response.
+
+        Raises:
+            Exception: propagate immediately
+        """
+
+
+@dataclass
+class BaseMethod[ResponseType](RequestMethod):
+    """Base class for API methods with a buffered, deserialized response.
+
+    Subclasses represent specific API endpoints.
+    Type parameter `ResponseType` specifies the expected return type.
+
+    Attributes:
+        __returning__: The type class of the response (automatically extracted
+                       from generic type).
+    """
+
+    __returning__: ClassVar[type]
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+
+        for base in get_original_bases(cls):
+            origin = getattr(base, "__origin__", None)
+
+            if origin is not None and issubclass(origin, BaseMethod):
+                if args := get_args(base):
+                    cls.__returning__ = args[0]
+                break
 
     def make_response(
         self,
@@ -101,15 +138,13 @@ class BaseMethod[ResponseType]:
             Exception: if response body indicates an error
         """
 
-    def on_error(self, response: HTTPResponse) -> None:
-        """Handle HTTP status errors for this specific method.
 
-        Override to provide custom error handling for this endpoint.
-        Called when response.ok is False.
+@dataclass
+class StreamMethod(RequestMethod):
+    """Base class for defining streamed-response API methods.
 
-        Args:
-             response: The HTTP response with error status.
-
-        Raises:
-            Exception: propagate immediately
-        """
+    Subclasses represent endpoints whose response body is read incrementally
+    (e.g. file downloads) rather than buffered and parsed. There is no
+    `response_loader`/`make_response` step here: the body is never fully
+    read, so there is nothing to deserialize.
+    """

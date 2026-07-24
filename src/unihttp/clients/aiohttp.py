@@ -4,15 +4,29 @@ from typing import Any
 from urllib.parse import urljoin
 
 import aiohttp
-from aiohttp import ClientSession, FormData
+from aiohttp import ClientResponse, ClientSession, FormData
 
 from unihttp.clients.base import BaseAsyncClient
 from unihttp.exceptions import NetworkError, RequestTimeoutError
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
+from unihttp.http.stream import AsyncChunkStream
 from unihttp.middlewares.base import AsyncMiddleware
 from unihttp.serialize import RequestDumper, ResponseLoader
+
+
+class _AiohttpChunkStream(AsyncChunkStream):
+    def __init__(self, response: ClientResponse, chunk_size: int) -> None:
+        super().__init__()
+        self._response = response
+        self._iter = response.content.iter_chunked(chunk_size)
+
+    async def _fetch_chunk(self) -> bytes:
+        return await anext(self._iter)
+
+    async def _close_response(self) -> None:
+        self._response.close()
 
 
 class AiohttpAsyncClient(BaseAsyncClient):
@@ -70,50 +84,66 @@ class AiohttpAsyncClient(BaseAsyncClient):
 
         return form_data
 
-    async def make_request(self, request: HTTPRequest) -> HTTPResponse:
-        data: FormData | str | None = None
-
+    def _build_data(self, request: HTTPRequest) -> FormData | str | bytes | None:
+        """Resolve the request payload: raw, then multipart/form, then JSON body."""
+        if request.raw is not None:
+            return request.raw
         if request.form or request.file:
-            data = self._build_form_data(request)
-
+            return self._build_form_data(request)
         if request.body:
-            if request.form or request.file:
-                raise ValueError(
-                    "Cannot use Body with Form or File. "
-                    "Use Form for fields in multipart requests."
-                )
-
             data = self.json_dumps(request.body)
             if "Content-Type" not in request.header:
                 request.header["Content-Type"] = "application/json"
+            return data
+        return None
+
+    async def _do_request(self, request: HTTPRequest) -> ClientResponse:
+        data = self._build_data(request)
 
         try:
-            async with self._session.request(
+            return await self._session.request(
                 method=request.method,
                 url=urljoin(self.base_url, request.url),
                 headers=request.header,
                 params=request.query,
                 data=data,
-            ) as response:
-                response_data: Any = None
-                content = await response.read()
-                if content:
-                    try:
-                        response_data = self.json_loads(content)
-                    except (ValueError, TypeError):
-                        response_data = content
-
-                return HTTPResponse(
-                    status_code=response.status,
-                    headers=response.headers,
-                    cookies=response.cookies,
-                    data=response_data,
-                    raw_response=response,
-                )
+            )
         except aiohttp.ClientConnectionError as e:
             raise NetworkError(str(e)) from e
         except TimeoutError as e:
             raise RequestTimeoutError(str(e)) from e
+
+    async def make_request(self, request: HTTPRequest) -> HTTPResponse:
+        response = await self._do_request(request)
+
+        response_data: Any = None
+        content = await response.read()
+        if content:
+            try:
+                response_data = self.json_loads(content)
+            except (ValueError, TypeError):
+                response_data = content
+
+        return HTTPResponse(
+            status_code=response.status,
+            headers=response.headers,
+            cookies=response.cookies,
+            data=response_data,
+            raw_response=response,
+        )
+
+    async def stream_make_request(
+        self, request: HTTPRequest, chunk_size: int = 65536
+    ) -> HTTPResponse[AsyncChunkStream]:
+        response = await self._do_request(request)
+
+        return HTTPResponse(
+            status_code=response.status,
+            headers=response.headers,
+            cookies=response.cookies,
+            data=_AiohttpChunkStream(response, chunk_size),
+            raw_response=response,
+        )
 
     async def close(self) -> None:
         await self._session.close()

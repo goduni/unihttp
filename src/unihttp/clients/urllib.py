@@ -1,3 +1,4 @@
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -12,8 +13,27 @@ from unihttp.exceptions import NetworkError, RequestTimeoutError
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
+from unihttp.http.stream import ChunkStream
 from unihttp.middlewares.base import Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
+
+_UrllibResponse = http.client.HTTPResponse | urllib.error.HTTPError
+
+
+class _UrllibChunkStream(ChunkStream):
+    def __init__(self, raw: _UrllibResponse, chunk_size: int) -> None:
+        super().__init__()
+        self._raw = raw
+        self._chunk_size = chunk_size
+
+    def _fetch_chunk(self) -> bytes:
+        chunk = self._raw.read(self._chunk_size)
+        if not chunk:
+            raise StopIteration
+        return chunk
+
+    def _close_response(self) -> None:
+        self._raw.close()
 
 
 class UrllibSyncClient(BaseSyncClient):
@@ -126,11 +146,8 @@ class UrllibSyncClient(BaseSyncClient):
         self, request: HTTPRequest, headers: dict[str, str]
     ) -> bytes | None:
         """Encode the request payload and set the matching Content-Type header."""
-        if request.body and (request.form or request.file):
-            raise ValueError(
-                "Cannot use Body with Form or File. "
-                "Use Form for fields in multipart requests."
-            )
+        if request.raw is not None:
+            return request.raw.encode() if isinstance(request.raw, str) else request.raw
 
         if request.file:
             body, content_type = self._encode_multipart(request.form, request.file)
@@ -144,7 +161,7 @@ class UrllibSyncClient(BaseSyncClient):
             return self.json_dumps(request.body).encode()
         return None
 
-    def make_request(self, request: HTTPRequest) -> HTTPResponse:
+    def _do_request(self, request: HTTPRequest) -> _UrllibResponse:
         headers = dict(request.header)
         body = self._prepare_body(request, headers)
 
@@ -156,10 +173,10 @@ class UrllibSyncClient(BaseSyncClient):
         )
 
         try:
-            raw: Any = self._opener.open(req, timeout=self._timeout)
+            return self._opener.open(req, timeout=self._timeout)
         except urllib.error.HTTPError as e:
             # HTTPError is itself a valid response object for non-2xx statuses.
-            raw = e
+            return e
         except urllib.error.URLError as e:
             if isinstance(e.reason, TimeoutError):
                 raise RequestTimeoutError(str(e)) from e
@@ -167,6 +184,8 @@ class UrllibSyncClient(BaseSyncClient):
         except TimeoutError as e:
             raise RequestTimeoutError(str(e)) from e
 
+    def make_request(self, request: HTTPRequest) -> HTTPResponse:
+        raw = self._do_request(request)
         content = raw.read()
 
         response_data: Any = None
@@ -181,5 +200,18 @@ class UrllibSyncClient(BaseSyncClient):
             headers=dict(raw.headers.items()),
             cookies=self._extract_cookies(raw.headers),
             data=response_data,
+            raw_response=raw,
+        )
+
+    def stream_make_request(
+        self, request: HTTPRequest, chunk_size: int = 65536
+    ) -> HTTPResponse[ChunkStream]:
+        raw = self._do_request(request)
+
+        return HTTPResponse(
+            status_code=raw.getcode(),
+            headers=dict(raw.headers.items()),
+            cookies=self._extract_cookies(raw.headers),
+            data=_UrllibChunkStream(raw, chunk_size),
             raw_response=raw,
         )

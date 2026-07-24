@@ -1,5 +1,6 @@
 import json
 from collections.abc import Callable, Mapping
+from contextlib import AsyncExitStack, ExitStack
 from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
@@ -12,6 +13,12 @@ from unihttp.exceptions import NetworkError, RequestTimeoutError
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
+from unihttp.http.stream import (
+    AsyncChunkStream,
+    AsyncIteratorChunkStream,
+    ChunkStream,
+    IteratorChunkStream,
+)
 from unihttp.middlewares.base import AsyncMiddleware, Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
 
@@ -130,17 +137,21 @@ class ZaprosSyncClient(BaseSyncClient):
 
         self._session = session
 
-    def make_request(self, request: HTTPRequest) -> HTTPResponse:
+    def _build_payload(
+        self, request: HTTPRequest
+    ) -> tuple[bytes | None, Any, Multipart | None]:
+        """Resolve (body, form, multipart): raw, then JSON body, then file/form."""
         body: bytes | None = None
         form: Any = None
         multipart: Multipart | None = None
 
-        if request.body:
-            if request.form or request.file:
-                raise ValueError(
-                    "Cannot use Body with Form or File. "
-                    "Use Form for fields in multipart requests."
-                )
+        if request.raw is not None:
+            body = (
+                request.raw.encode("utf-8")
+                if isinstance(request.raw, str)
+                else request.raw
+            )
+        elif request.body:
             body = self.json_dumps(request.body).encode("utf-8")
             if "Content-Type" not in request.header:
                 request.header["Content-Type"] = "application/json"
@@ -148,6 +159,11 @@ class ZaprosSyncClient(BaseSyncClient):
             multipart = _build_multipart(request.form, request.file)
         elif request.form:
             form = _stringify_pairs(request.form)
+
+        return body, form, multipart
+
+    def make_request(self, request: HTTPRequest) -> HTTPResponse:
+        body, form, multipart = self._build_payload(request)
 
         try:
             response = self._session.request(  # type: ignore[call-overload]
@@ -178,6 +194,37 @@ class ZaprosSyncClient(BaseSyncClient):
             headers=response.headers,
             cookies={},
             data=response_data,
+            raw_response=response,
+        )
+
+    def stream_make_request(
+        self, request: HTTPRequest, chunk_size: int = 65536
+    ) -> HTTPResponse[ChunkStream]:
+        body, form, multipart = self._build_payload(request)
+
+        stream_cm = self._session.stream(  # type: ignore[call-overload]
+            method=request.method,
+            url=urljoin(self.base_url, request.url),
+            headers=request.header,
+            params=_stringify_pairs(request.query),
+            form=form,
+            body=body,
+            multipart=multipart,
+        )
+
+        stack = ExitStack()
+        try:
+            response = stack.enter_context(stream_cm)
+        except zapros.TimeoutError as e:
+            raise RequestTimeoutError(str(e)) from e
+        except zapros.ConnectionError as e:
+            raise NetworkError(str(e)) from e
+
+        return HTTPResponse(
+            status_code=response.status,
+            headers=response.headers,
+            cookies={},
+            data=IteratorChunkStream(response.iter_bytes(chunk_size), stack.close),
             raw_response=response,
         )
 
@@ -212,17 +259,21 @@ class ZaprosAsyncClient(BaseAsyncClient):
 
         self._session = session
 
-    async def make_request(self, request: HTTPRequest) -> HTTPResponse:
+    def _build_payload(
+        self, request: HTTPRequest
+    ) -> tuple[bytes | None, Any, Multipart | None]:
+        """Resolve (body, form, multipart): raw, then JSON body, then file/form."""
         body: bytes | None = None
         form: Any = None
         multipart: Multipart | None = None
 
-        if request.body:
-            if request.form or request.file:
-                raise ValueError(
-                    "Cannot use Body with Form or File. "
-                    "Use Form for fields in multipart requests."
-                )
+        if request.raw is not None:
+            body = (
+                request.raw.encode("utf-8")
+                if isinstance(request.raw, str)
+                else request.raw
+            )
+        elif request.body:
             body = self.json_dumps(request.body).encode("utf-8")
             if "Content-Type" not in request.header:
                 request.header["Content-Type"] = "application/json"
@@ -230,6 +281,11 @@ class ZaprosAsyncClient(BaseAsyncClient):
             multipart = _build_multipart(request.form, request.file)
         elif request.form:
             form = _stringify_pairs(request.form)
+
+        return body, form, multipart
+
+    async def make_request(self, request: HTTPRequest) -> HTTPResponse:
+        body, form, multipart = self._build_payload(request)
 
         try:
             response = await self._session.request(  # type: ignore[call-overload]
@@ -260,6 +316,39 @@ class ZaprosAsyncClient(BaseAsyncClient):
             headers=response.headers,
             cookies={},
             data=response_data,
+            raw_response=response,
+        )
+
+    async def stream_make_request(
+        self, request: HTTPRequest, chunk_size: int = 65536
+    ) -> HTTPResponse[AsyncChunkStream]:
+        body, form, multipart = self._build_payload(request)
+
+        stream_cm = self._session.stream(  # type: ignore[call-overload]
+            method=request.method,
+            url=urljoin(self.base_url, request.url),
+            headers=request.header,
+            params=_stringify_pairs(request.query),
+            form=form,
+            body=body,
+            multipart=multipart,
+        )
+
+        stack = AsyncExitStack()
+        try:
+            response = await stack.enter_async_context(stream_cm)
+        except zapros.TimeoutError as e:
+            raise RequestTimeoutError(str(e)) from e
+        except zapros.ConnectionError as e:
+            raise NetworkError(str(e)) from e
+
+        return HTTPResponse(
+            status_code=response.status,
+            headers=response.headers,
+            cookies={},
+            data=AsyncIteratorChunkStream(
+                response.async_iter_bytes(chunk_size), stack.aclose
+            ),
             raw_response=response,
         )
 

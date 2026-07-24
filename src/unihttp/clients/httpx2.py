@@ -4,13 +4,19 @@ from typing import Any
 from urllib.parse import urljoin
 
 import httpx2
-from httpx2 import AsyncClient, Client
+from httpx2 import AsyncClient, Client, Response
 
 from unihttp.clients.base import BaseAsyncClient, BaseSyncClient
 from unihttp.exceptions import NetworkError, RequestTimeoutError
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
+from unihttp.http.stream import (
+    AsyncChunkStream,
+    AsyncIteratorChunkStream,
+    ChunkStream,
+    IteratorChunkStream,
+)
 from unihttp.middlewares.base import AsyncMiddleware, Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
 
@@ -58,22 +64,23 @@ class HTTPX2SyncClient(BaseSyncClient):
                 file_list.append((key, value))
         return file_list
 
-    def make_request(self, request: HTTPRequest) -> HTTPResponse:
-        content = None
-
+    def _build_content(self, request: HTTPRequest) -> Any:
+        """Resolve the request body: raw bytes/str take priority over JSON body."""
+        if request.raw is not None:
+            return request.raw
         if request.body:
-            if request.form or request.file:
-                raise ValueError(
-                    "Cannot use Body with Form or File. "
-                    "Use Form for fields in multipart requests."
-                )
             content = self.json_dumps(request.body)
             if "Content-Type" not in request.header:
                 request.header["Content-Type"] = "application/json"
+            return content
+        return None
+
+    def _do_request(self, request: HTTPRequest, *, stream: bool) -> Response:
+        content = self._build_content(request)
 
         try:
             files = self._convert_files(request.file) if request.file else None
-            response = self._session.request(
+            built_request = self._session.build_request(
                 method=request.method,
                 url=urljoin(self.base_url, request.url),
                 headers=request.header,
@@ -82,10 +89,14 @@ class HTTPX2SyncClient(BaseSyncClient):
                 content=content,
                 data=request.form,
             )
+            return self._session.send(built_request, stream=stream)
         except httpx2.NetworkError as e:
             raise NetworkError(str(e)) from e
         except httpx2.TimeoutException as e:
             raise RequestTimeoutError(str(e)) from e
+
+    def make_request(self, request: HTTPRequest) -> HTTPResponse:
+        response = self._do_request(request, stream=False)
 
         response_data: Any = None
         if response.content:
@@ -99,6 +110,19 @@ class HTTPX2SyncClient(BaseSyncClient):
             headers=response.headers,
             cookies=response.cookies,
             data=response_data,
+            raw_response=response,
+        )
+
+    def stream_make_request(
+        self, request: HTTPRequest, chunk_size: int = 65536
+    ) -> HTTPResponse[ChunkStream]:
+        response = self._do_request(request, stream=True)
+
+        return HTTPResponse(
+            status_code=response.status_code,
+            headers=response.headers,
+            cookies=response.cookies,
+            data=IteratorChunkStream(response.iter_bytes(chunk_size), response.close),
             raw_response=response,
         )
 
@@ -149,21 +173,23 @@ class HTTPX2AsyncClient(BaseAsyncClient):
                 file_list.append((key, value))
         return file_list
 
-    async def make_request(self, request: HTTPRequest) -> HTTPResponse:
-        content = None
+    def _build_content(self, request: HTTPRequest) -> Any:
+        """Resolve the request body: raw bytes/str take priority over JSON body."""
+        if request.raw is not None:
+            return request.raw
         if request.body:
-            if request.form or request.file:
-                raise ValueError(
-                    "Cannot use Body with Form or File. "
-                    "Use Form for fields in multipart requests."
-                )
             content = self.json_dumps(request.body)
             if "Content-Type" not in request.header:
                 request.header["Content-Type"] = "application/json"
+            return content
+        return None
+
+    async def _do_request(self, request: HTTPRequest, *, stream: bool) -> Response:
+        content = self._build_content(request)
 
         try:
             files = self._convert_files(request.file) if request.file else None
-            response = await self._session.request(
+            built_request = self._session.build_request(
                 method=request.method,
                 url=urljoin(self.base_url, request.url),
                 headers=request.header,
@@ -172,10 +198,14 @@ class HTTPX2AsyncClient(BaseAsyncClient):
                 content=content,
                 data=request.form,
             )
+            return await self._session.send(built_request, stream=stream)
         except httpx2.NetworkError as e:
             raise NetworkError(str(e)) from e
         except httpx2.TimeoutException as e:
             raise RequestTimeoutError(str(e)) from e
+
+    async def make_request(self, request: HTTPRequest) -> HTTPResponse:
+        response = await self._do_request(request, stream=False)
 
         response_data: Any = None
         if response.content:
@@ -189,6 +219,21 @@ class HTTPX2AsyncClient(BaseAsyncClient):
             headers=response.headers,
             cookies=response.cookies,
             data=response_data,
+            raw_response=response,
+        )
+
+    async def stream_make_request(
+        self, request: HTTPRequest, chunk_size: int = 65536
+    ) -> HTTPResponse[AsyncChunkStream]:
+        response = await self._do_request(request, stream=True)
+
+        return HTTPResponse(
+            status_code=response.status_code,
+            headers=response.headers,
+            cookies=response.cookies,
+            data=AsyncIteratorChunkStream(
+                response.aiter_bytes(chunk_size), response.aclose
+            ),
             raw_response=response,
         )
 

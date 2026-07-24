@@ -5,8 +5,9 @@ from typing import Any
 
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
-from unihttp.method import BaseMethod, ResponseType
-from unihttp.middlewares.base import AsyncMiddleware, Middleware
+from unihttp.http.stream import AsyncChunkStream, ChunkStream
+from unihttp.method import BaseMethod, ResponseType, StreamMethod
+from unihttp.middlewares.base import AsyncHandler, AsyncMiddleware, Handler, Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
 
 
@@ -49,7 +50,9 @@ class BaseClient:
             Exception: if response body indicates an error.
         """
 
-    def handle_error(self, response: HTTPResponse, method: BaseMethod) -> None:
+    def handle_error(
+        self, response: HTTPResponse, method: BaseMethod | StreamMethod
+    ) -> None:
         """Handle HTTP status errors for all methods.
 
         Override to provide shared error handling for all API methods.
@@ -57,7 +60,9 @@ class BaseClient:
 
         Args:
              response: The HTTP response with error status.
-             method: The method instance that triggered the request.
+             method: The method instance that triggered the request. Either a
+                `BaseMethod` (from `call_method`) or a `StreamMethod` (from
+                `call_method_stream`).
 
         Raises:
             Exception: if response indicates an error that should stop processing.
@@ -84,6 +89,11 @@ class BaseSyncClient(BaseClient):
             json_loads=json_loads,
         )
         self.middleware = middleware or []
+
+    def _chain_middleware(self, handler: Handler) -> Handler:
+        for middleware in reversed(self.middleware):
+            handler = functools.partial(middleware.handle, next_handler=handler)
+        return handler
 
     def call_method(self, method: BaseMethod[ResponseType]) -> ResponseType:
         """Execute an API method synchronously.
@@ -116,11 +126,7 @@ class BaseSyncClient(BaseClient):
 
             return response
 
-        handler = _send
-        for middleware in reversed(self.middleware):
-            handler = functools.partial(middleware.handle, next_handler=handler)
-
-        http_response = handler(http_request)
+        http_response = self._chain_middleware(_send)(http_request)
 
         return method.make_response(http_response, response_loader=self.response_loader)
 
@@ -136,6 +142,57 @@ class BaseSyncClient(BaseClient):
             HTTPResponse: The unified HTTP response object.
         """
         raise NotImplementedError
+
+    def stream_make_request(
+        self, request: HTTPRequest, chunk_size: int = 65536
+    ) -> HTTPResponse[ChunkStream]:
+        """Perform the actual streaming HTTP request.
+
+        Must be implemented by concrete client subclasses.
+
+        Args:
+            request: The unified HTTP request object.
+            chunk_size: Number of bytes to read per chunk.
+
+        Returns:
+            HTTPResponse: status/headers available immediately, `.data` is
+            an unconsumed `ChunkStream`.
+        """
+        raise NotImplementedError
+
+    def call_method_stream(
+        self, method: StreamMethod, chunk_size: int = 65536
+    ) -> ChunkStream:
+        """Execute a streaming API method synchronously.
+
+        Pipeline mirrors `call_method`, but the terminal handler streams the
+        body instead of buffering it, and there is no response_loader step.
+
+        Args:
+            method: The stream method instance to execute.
+            chunk_size: Number of bytes to read per chunk.
+
+        Returns:
+            A `ChunkStream` of `bytes` chunks. Use as a context manager
+            (`with client.call_method_stream(method) as stream:`) — it
+            closes the underlying connection on exit, even if the caller
+            stops iterating early.
+        """
+        request = method.build_http_request(request_dumper=self.request_dumper)
+
+        def _send(request_: HTTPRequest) -> HTTPResponse[ChunkStream]:
+            response_ = self.stream_make_request(request_, chunk_size=chunk_size)
+
+            if not response_.ok:
+                # ChunkStream.close() is a direct call, not tied to whether
+                # iteration ever started (unlike closing a bare generator).
+                response_.data.close()
+                method.on_error(response_)
+                self.handle_error(response_, method)
+
+            return response_
+
+        return self._chain_middleware(_send)(request).data
 
     def close(self) -> None:
         """Close the client and release resources."""
@@ -168,6 +225,11 @@ class BaseAsyncClient(BaseClient):
         )
         self.middleware = middleware or []
 
+    def _chain_middleware(self, handler: AsyncHandler) -> AsyncHandler:
+        for middleware in reversed(self.middleware):
+            handler = functools.partial(middleware.handle, next_handler=handler)
+        return handler
+
     async def call_method(self, method: BaseMethod[ResponseType]) -> ResponseType:
         """Execute an API method asynchronously.
 
@@ -199,11 +261,7 @@ class BaseAsyncClient(BaseClient):
 
             return response
 
-        handler = _send
-        for middleware in reversed(self.middleware):
-            handler = functools.partial(middleware.handle, next_handler=handler)
-
-        http_response = await handler(http_request)
+        http_response = await self._chain_middleware(_send)(http_request)
 
         return method.make_response(http_response, response_loader=self.response_loader)
 
@@ -219,6 +277,59 @@ class BaseAsyncClient(BaseClient):
             HTTPResponse: The unified HTTP response object.
         """
         raise NotImplementedError
+
+    async def stream_make_request(
+        self, request: HTTPRequest, chunk_size: int = 65536
+    ) -> HTTPResponse[AsyncChunkStream]:
+        """Perform the actual streaming HTTP request asynchronously.
+
+        Must be implemented by concrete client subclasses.
+
+        Args:
+            request: The unified HTTP request object.
+            chunk_size: Number of bytes to read per chunk.
+
+        Returns:
+            HTTPResponse: status/headers available immediately, `.data` is
+            an unconsumed `AsyncChunkStream`.
+        """
+        raise NotImplementedError
+
+    async def call_method_stream(
+        self, method: StreamMethod, chunk_size: int = 65536
+    ) -> AsyncChunkStream:
+        """Execute a streaming API method asynchronously.
+
+        Pipeline mirrors `call_method`, but the terminal handler streams the
+        body instead of buffering it, and there is no response_loader step.
+
+        Args:
+            method: The stream method instance to execute.
+            chunk_size: Number of bytes to read per chunk.
+
+        Returns:
+            An `AsyncChunkStream` of `bytes` chunks. Use as a context
+            manager (`async with await client.call_method_stream(method) as
+            stream:`) — it closes the underlying connection on exit, even
+            if the caller stops iterating early.
+        """
+        request = method.build_http_request(request_dumper=self.request_dumper)
+
+        async def _send(request_: HTTPRequest) -> HTTPResponse[AsyncChunkStream]:
+            response_ = await self.stream_make_request(request_, chunk_size=chunk_size)
+
+            if not response_.ok:
+                # AsyncChunkStream.aclose() is a direct call, not tied to
+                # whether iteration ever started (unlike aclosing a bare
+                # async generator).
+                await response_.data.aclose()
+                method.on_error(response_)
+                self.handle_error(response_, method)
+
+            return response_
+
+        response = await self._chain_middleware(_send)(request)
+        return response.data
 
     async def close(self) -> None:
         """Close the client and release resources asynchronously."""

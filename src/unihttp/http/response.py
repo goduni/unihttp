@@ -6,13 +6,14 @@ from unihttp.exceptions import ClientError, ServerError
 
 
 @dataclass
-class HTTPResponse:
+class HTTPResponse[DataT]:
     """Unified HTTP response structure.
 
     Attributes:
         status_code: The HTTP status code of the response.
         headers: Dictionary of response headers.
-        data: The parsed response data (usually JSON).
+        data: The parsed response data (usually JSON),
+            or the `ChunkStream`/`AsyncChunkStream` for a streamed response.
         cookies: Dictionary of response cookies.
         raw_response: The original response object from the underlying client
                       (e.g., httpx.Response).
@@ -21,7 +22,7 @@ class HTTPResponse:
     status_code: int
 
     headers: Mapping[str, Any]
-    data: Any
+    data: DataT
     cookies: Mapping[str, Any]
 
     raw_response: Any
