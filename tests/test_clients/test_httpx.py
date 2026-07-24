@@ -5,6 +5,7 @@ import pytest
 from unihttp.clients.httpx import HTTPXAsyncClient
 from unihttp.exceptions import NetworkError, RequestTimeoutError
 from unihttp.http.request import HTTPRequest
+from unihttp.clients.httpx import _HTTPXAsyncChunkStream
 
 
 @pytest.fixture
@@ -30,7 +31,9 @@ async def test_httpx_make_request(mock_request_dumper, mock_response_loader, moc
     mock_response.content = b'{"key": "value"}'
     mock_response.text = '{"key": "value"}'
 
-    mock_client.request.return_value = mock_response
+    built_request = Mock()
+    mock_client.build_request.return_value = built_request
+    mock_client.send.return_value = mock_response
 
     request = HTTPRequest(
         url="/test",
@@ -46,7 +49,7 @@ async def test_httpx_make_request(mock_request_dumper, mock_response_loader, moc
     response = await client.make_request(request)
 
     # Verify call arguments
-    mock_client.request.assert_called_once_with(
+    mock_client.build_request.assert_called_once_with(
         method="POST",
         url="http://base/test",
         headers={"Auth": "123", "Content-Type": "application/json"},
@@ -55,6 +58,7 @@ async def test_httpx_make_request(mock_request_dumper, mock_response_loader, moc
         files=None,
         content='{"data": "abc"}'
     )
+    mock_client.send.assert_called_once_with(built_request, stream=False)
 
     # Verify response mapping
     assert response.status_code == 200
@@ -79,7 +83,7 @@ async def test_httpx_upload_file(mock_request_dumper, mock_response_loader, mock
     mock_response.status_code = 200
     mock_response.content = b'{"status": "ok"}'
     mock_response.text = '{"status": "ok"}'
-    mock_client.request.return_value = mock_response
+    mock_client.send.return_value = mock_response
 
     request = HTTPRequest(
         url="/upload",
@@ -94,7 +98,7 @@ async def test_httpx_upload_file(mock_request_dumper, mock_response_loader, mock
 
     await client.make_request(request)
 
-    mock_client.request.assert_called_once_with(
+    mock_client.build_request.assert_called_once_with(
         method="POST",
         url="http://base/upload",
         headers={},
@@ -118,7 +122,7 @@ async def test_httpx_close(mock_request_dumper, mock_response_loader, mock_clien
 @pytest.mark.asyncio
 async def test_httpx_network_error(mock_request_dumper, mock_response_loader, mock_client):
     client = HTTPXAsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_client)
-    mock_client.request.side_effect = httpx.NetworkError("Network error")
+    mock_client.send.side_effect = httpx.NetworkError("Network error")
 
     request = HTTPRequest("GET", "url", {}, {}, {}, {}, {}, {})
 
@@ -129,35 +133,11 @@ async def test_httpx_network_error(mock_request_dumper, mock_response_loader, mo
 @pytest.mark.asyncio
 async def test_httpx_timeout_error(mock_request_dumper, mock_response_loader, mock_client):
     client = HTTPXAsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_client)
-    mock_client.request.side_effect = httpx.TimeoutException("Timed out")
+    mock_client.send.side_effect = httpx.TimeoutException("Timed out")
 
     request = HTTPRequest("url", "GET", {}, {}, {}, {}, {}, {})
 
     with pytest.raises(RequestTimeoutError):
-        await client.make_request(request)
-
-
-@pytest.mark.asyncio
-async def test_httpx_body_and_form_error(mock_request_dumper, mock_response_loader, mock_client):
-    client = HTTPXAsyncClient(
-        base_url="http://base",
-        request_dumper=mock_request_dumper,
-        response_loader=mock_response_loader,
-        session=mock_client
-    )
-
-    request = HTTPRequest(
-        url="/test",
-        method="POST",
-        header={},
-        path={},
-        query={},
-        body={"some": "body"},
-        file=None,
-        form={"some": "form"}
-    )
-
-    with pytest.raises(ValueError, match="Cannot use Body with Form or File"):
         await client.make_request(request)
 
 
@@ -177,7 +157,7 @@ async def test_httpx_file_list_conversion(mock_request_dumper, mock_response_loa
     mock_response.status_code = 200
     mock_response.content = b'{}'
     mock_response.text = '{}'
-    mock_client.request.return_value = mock_response
+    mock_client.send.return_value = mock_response
 
     request = HTTPRequest(
         url="/upload",
@@ -199,8 +179,8 @@ async def test_httpx_file_list_conversion(mock_request_dumper, mock_response_loa
 
     await client.make_request(request)
 
-    mock_client.request.assert_called_once()
-    call_kwargs = mock_client.request.call_args[1]
+    mock_client.build_request.assert_called_once()
+    call_kwargs = mock_client.build_request.call_args[1]
     files = call_kwargs["files"]
 
     # Verify order and content
@@ -208,3 +188,93 @@ async def test_httpx_file_list_conversion(mock_request_dumper, mock_response_loa
     assert files[1] == ("files", ("f2.txt", b"content2"))
     assert files[2] == ("single_upload_file", ("f3.txt", b"content3", "application/octet-stream"))
     assert files[3] == ("single_tuple", ("f4.txt", b"content4"))
+
+
+@pytest.mark.asyncio
+async def test_httpx_async_raw_body_bytes(mock_request_dumper, mock_response_loader, mock_client):
+    client = HTTPXAsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_client)
+
+    mock_response = Mock()
+    mock_response.status_code = 200
+    mock_response.headers = {}
+    mock_response.cookies = {}
+    mock_response.content = b""
+    mock_client.send.return_value = mock_response
+
+    request = HTTPRequest(
+        url="/raw", method="POST", header={}, path={}, query={},
+        body={}, file={}, form={}, raw="raw-string"
+    )
+
+    await client.make_request(request)
+
+    call_kwargs = mock_client.build_request.call_args.kwargs
+    assert call_kwargs["content"] == "raw-string"
+
+
+@pytest.mark.asyncio
+async def test_httpx_async_stream_make_request(mock_request_dumper, mock_response_loader):
+    from unittest.mock import AsyncMock, MagicMock
+
+    session = MagicMock(spec=httpx.AsyncClient)
+    built_request = MagicMock()
+    session.build_request.return_value = built_request
+
+    async def aiter_bytes(chunk_size):
+        for chunk in (b"a", b"b"):
+            yield chunk
+
+    response = MagicMock()
+    response.status_code = 200
+    response.headers = {}
+    response.cookies = {}
+    response.aiter_bytes = aiter_bytes
+    response.aclose = AsyncMock()
+    session.send = AsyncMock(return_value=response)
+
+    client = HTTPXAsyncClient("http://base", mock_request_dumper, mock_response_loader, session=session)
+
+    request = HTTPRequest(
+        url="/download", method="GET", header={}, path={}, query={},
+        body={}, file={}, form={}
+    )
+
+    result = await client.stream_make_request(request, chunk_size=1234)
+
+    assert result.status_code == 200
+    session.send.assert_called_once_with(built_request, stream=True)
+
+    chunks = [chunk async for chunk in result.data]
+    assert chunks == [b"a", b"b"]
+    response.aclose.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_httpx_async_chunk_stream_mid_stream_error_translated():
+    async def aiter_bytes(chunk_size):
+        yield b"a"
+        raise httpx.ConnectError("connection lost")
+
+    response = Mock()
+    response.aiter_bytes = aiter_bytes
+
+    stream = _HTTPXAsyncChunkStream(response, chunk_size=999)
+    assert await anext(stream) == b"a"
+    with pytest.raises(NetworkError):
+        await anext(stream)
+
+
+@pytest.mark.asyncio
+async def test_httpx_async_chunk_stream_mid_stream_timeout_translated():
+
+    async def aiter_bytes(chunk_size):
+        yield b"a"
+        raise httpx.ReadTimeout("timed out")
+
+    response = Mock()
+    response.aiter_bytes = aiter_bytes
+
+    stream = _HTTPXAsyncChunkStream(response, chunk_size=999)
+    assert await anext(stream) == b"a"
+    with pytest.raises(RequestTimeoutError):
+        await anext(stream)

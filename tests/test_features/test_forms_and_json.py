@@ -33,7 +33,7 @@ async def test_httpx_json_body_custom_dumps(mock_request_dumper, mock_response_l
         json_dumps=custom_dumps,
         json_loads=custom_loads
     )
-    mock_client.request.return_value = mock_response
+    mock_client.send.return_value = mock_response
 
     request = HTTPRequest(
         url="/json", method="POST", header={}, path={}, query={},
@@ -46,8 +46,8 @@ async def test_httpx_json_body_custom_dumps(mock_request_dumper, mock_response_l
     custom_dumps.assert_called_once_with({"foo": "bar"})
     
     # Verify httpx called with content string and content-type header
-    mock_client.request.assert_called_once()
-    call_kwargs = mock_client.request.call_args.kwargs
+    mock_client.build_request.assert_called_once()
+    call_kwargs = mock_client.build_request.call_args.kwargs
     assert call_kwargs["content"] == '{"custom": "json"}'
     assert call_kwargs["headers"]["Content-Type"] == "application/json"
     assert call_kwargs["data"] == {}
@@ -58,7 +58,7 @@ async def test_httpx_json_body_custom_dumps(mock_request_dumper, mock_response_l
 @pytest.mark.asyncio
 async def test_httpx_form_data(mock_request_dumper, mock_response_loader, mock_client, mock_response):
     client = HTTPXAsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_client)
-    mock_client.request.return_value = mock_response
+    mock_client.send.return_value = mock_response
 
     request = HTTPRequest(
         url="/form", method="POST", header={}, path={}, query={},
@@ -67,29 +67,17 @@ async def test_httpx_form_data(mock_request_dumper, mock_response_loader, mock_c
 
     await client.make_request(request)
 
-    mock_client.request.assert_called_once()
-    call_kwargs = mock_client.request.call_args.kwargs
+    mock_client.build_request.assert_called_once()
+    call_kwargs = mock_client.build_request.call_args.kwargs
     assert call_kwargs["data"] == {"field": "value"}
     assert call_kwargs["content"] is None
     # No forced content-type for form (httpx handles it) 
     # But if data is dict, httpx sets application/x-www-form-urlencoded
 
 @pytest.mark.asyncio
-async def test_httpx_mixed_body_form_error(mock_request_dumper, mock_response_loader, mock_client):
-    client = HTTPXAsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_client)
-    
-    request = HTTPRequest(
-        url="/mixed", method="POST", header={}, path={}, query={},
-        body={"json": "part"}, file={}, form={"form": "part"}
-    )
-
-    with pytest.raises(ValueError, match="Cannot use Body with Form or File"):
-        await client.make_request(request)
-
-@pytest.mark.asyncio
 async def test_httpx_multipart(mock_request_dumper, mock_response_loader, mock_client, mock_response):
     client = HTTPXAsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_client)
-    mock_client.request.return_value = mock_response
+    mock_client.send.return_value = mock_response
 
     request = HTTPRequest(
         url="/files", method="POST", header={}, path={}, query={},
@@ -98,8 +86,8 @@ async def test_httpx_multipart(mock_request_dumper, mock_response_loader, mock_c
 
     await client.make_request(request)
 
-    mock_client.request.assert_called_once()
-    call_kwargs = mock_client.request.call_args.kwargs
+    mock_client.build_request.assert_called_once()
+    call_kwargs = mock_client.build_request.call_args.kwargs
     assert call_kwargs["files"] == [("file", b"bits")]
     assert call_kwargs["data"] == {"meta": "data"}
     assert call_kwargs["content"] is None

@@ -6,7 +6,7 @@ from email.message import Message
 from unittest.mock import MagicMock
 
 import pytest
-from unihttp.clients.urllib import UrllibSyncClient
+from unihttp.clients.urllib import UrllibSyncClient, _UrllibChunkStream
 from unihttp.exceptions import NetworkError, RequestTimeoutError
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
@@ -25,12 +25,9 @@ class FakeHeaders(Message):
 
 class FakeResponse:
     def __init__(self, status=200, headers=None, body=b"", cookies=None):
-        self._status = status
+        self.status = status
         self.headers = FakeHeaders(headers, cookies)
         self._body = body
-
-    def getcode(self):
-        return self._status
 
     def read(self):
         return self._body
@@ -149,26 +146,6 @@ def test_urllib_http_error_is_response(
     assert response.is_client_error
 
 
-def test_urllib_body_and_form_error(
-    mock_request_dumper, mock_response_loader, mock_opener
-):
-    client = make_client(mock_request_dumper, mock_response_loader, mock_opener)
-
-    request = HTTPRequest(
-        url="/test",
-        method="POST",
-        header={},
-        path={},
-        query={},
-        body={"some": "body"},
-        file=None,
-        form={"some": "form"},
-    )
-
-    with pytest.raises(ValueError, match="Cannot use Body with Form or File"):
-        client.make_request(request)
-
-
 def test_urllib_form_only(mock_request_dumper, mock_response_loader, mock_opener):
     client = make_client(mock_request_dumper, mock_response_loader, mock_opener)
     mock_opener.open.return_value = FakeResponse(status=200, body=b"{}")
@@ -281,3 +258,101 @@ def test_urllib_no_body_get(mock_request_dumper, mock_response_loader, mock_open
     assert sent_req.get_method() == "GET"
     assert response.status_code == 204
     assert response.data is None
+
+
+def test_urllib_raw_body(mock_request_dumper, mock_response_loader):
+    fake_response = MagicMock()
+    fake_response.status = 200
+    fake_response.headers.items.return_value = []
+    fake_response.headers.get_all.return_value = []
+    fake_response.read.return_value = b"{}"
+
+    opener = MagicMock()
+    opener.open.return_value = fake_response
+
+    client = UrllibSyncClient("http://base", mock_request_dumper, mock_response_loader, opener=opener)
+
+    request = HTTPRequest(
+        url="/raw", method="POST", header={}, path={}, query={},
+        body={}, file={}, form={}, raw=b"raw-payload"
+    )
+    client.make_request(request)
+
+    sent_request = opener.open.call_args.args[0]
+    assert sent_request.data == b"raw-payload"
+
+
+def test_urllib_stream_make_request(mock_request_dumper, mock_response_loader):
+    fake_response = MagicMock()
+    fake_response.status = 200
+    fake_response.headers.items.return_value = []
+    fake_response.headers.get_all.return_value = []
+    fake_response.read.side_effect = [b"a", b"b", b""]
+
+    opener = MagicMock()
+    opener.open.return_value = fake_response
+
+    client = UrllibSyncClient("http://base", mock_request_dumper, mock_response_loader, opener=opener)
+
+    request = HTTPRequest(
+        url="/download", method="GET", header={}, path={}, query={},
+        body={}, file={}, form={}
+    )
+    result = client.stream_make_request(request, chunk_size=5)
+
+    assert result.status_code == 200
+    chunks = list(result.data)
+    assert chunks == [b"a", b"b"]
+    fake_response.read.assert_any_call(5)
+    fake_response.close.assert_called_once()
+
+
+def test_urllib_chunk_stream_closes_without_ever_reading():
+    raw = MagicMock()
+    raw.read.side_effect = [b"a", b"b", b""]
+
+    stream = _UrllibChunkStream(raw, chunk_size=5)
+    stream.close()
+
+    raw.read.assert_not_called()
+    raw.close.assert_called_once()
+
+    # Idempotent: closing again, or iterating after close, must not reopen
+    # or re-close the connection.
+    stream.close()
+    assert list(stream) == []
+    raw.close.assert_called_once()
+
+
+def test_urllib_chunk_stream_early_break_closes_once():
+    raw = MagicMock()
+    raw.read.side_effect = [b"a", b"b", b""]
+
+    stream = _UrllibChunkStream(raw, chunk_size=5)
+    for chunk in stream:
+        assert chunk == b"a"
+        break
+    stream.close()
+
+    raw.read.assert_called_once_with(5)
+    raw.close.assert_called_once()
+
+
+def test_urllib_chunk_stream_mid_stream_connection_error_translated():
+    raw = MagicMock()
+    raw.read.side_effect = [b"a", ConnectionResetError("connection reset")]
+
+    stream = _UrllibChunkStream(raw, chunk_size=5)
+    assert next(stream) == b"a"
+    with pytest.raises(NetworkError):
+        next(stream)
+
+
+def test_urllib_chunk_stream_mid_stream_timeout_translated():
+    raw = MagicMock()
+    raw.read.side_effect = [b"a", TimeoutError("timed out")]
+
+    stream = _UrllibChunkStream(raw, chunk_size=5)
+    assert next(stream) == b"a"
+    with pytest.raises(RequestTimeoutError):
+        next(stream)

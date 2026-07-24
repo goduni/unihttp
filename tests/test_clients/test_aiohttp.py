@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import aiohttp
 import pytest
-from unihttp.clients.aiohttp import AiohttpAsyncClient
+from unihttp.clients.aiohttp import AiohttpAsyncClient, _AiohttpChunkStream
 from unihttp.exceptions import NetworkError, RequestTimeoutError
 from unihttp.http.request import HTTPRequest
 
@@ -28,10 +28,7 @@ async def test_aiohttp_make_request(mock_request_dumper, mock_response_loader, m
     mock_response.cookies = {}
     mock_response.json.return_value = {"key": "value"}
     mock_response.read.return_value = b'{"key": "value"}'
-    mock_response.__aenter__.return_value = mock_response
-    mock_response.__aexit__.return_value = None
-
-    mock_session.request.return_value = mock_response
+    mock_session.request = AsyncMock(return_value=mock_response)
 
     request = HTTPRequest(
         url="/test",
@@ -113,9 +110,7 @@ async def test_aiohttp_upload_file(mock_request_dumper, mock_response_loader, mo
         mock_response.cookies = {}
         mock_response.json.return_value = {}
         mock_response.read.return_value = b"{}"
-        mock_response.__aenter__.return_value = mock_response
-        mock_response.__aexit__.return_value = None
-        mock_session.request.return_value = mock_response
+        mock_session.request = AsyncMock(return_value=mock_response)
 
         request = HTTPRequest(
             url="/upload",
@@ -160,9 +155,7 @@ async def test_aiohttp_upload_complex(mock_request_dumper, mock_response_loader,
         mock_response.cookies = {}
         mock_response.json.return_value = {}
         mock_response.read.return_value = b"{}"
-        mock_response.__aenter__.return_value = mock_response
-        mock_response.__aexit__.return_value = None
-        mock_session.request.return_value = mock_response
+        mock_session.request = AsyncMock(return_value=mock_response)
 
         request = HTTPRequest("/upload", "POST", {}, {}, {}, {},
                               file={"f1": ("f.txt", b"data", "text/plain")},
@@ -173,29 +166,6 @@ async def test_aiohttp_upload_complex(mock_request_dumper, mock_response_loader,
         calls = mock_form.add_field.call_args_list
         assert any(c[0][0] == "f1" and c[0][1] == b"data" and c[1].get("content_type") == "text/plain" for c in calls)
 
-
-@pytest.mark.asyncio
-async def test_aiohttp_body_and_form_error(mock_request_dumper, mock_response_loader, mock_session):
-    client = AiohttpAsyncClient(
-        base_url="http://base",
-        request_dumper=mock_request_dumper,
-        response_loader=mock_response_loader,
-        session=mock_session
-    )
-
-    request = HTTPRequest(
-        url="/test",
-        method="POST",
-        header={},
-        path={},
-        query={},
-        body={"some": "body"},
-        file={},
-        form={"some": "form"}
-    )
-
-    with pytest.raises(ValueError, match="Cannot use Body with Form or File"):
-        await client.make_request(request)
 
 
 @pytest.mark.asyncio
@@ -214,9 +184,7 @@ async def test_aiohttp_upload_file_object(mock_request_dumper, mock_response_loa
         mock_response.cookies = {}
         mock_response.json.return_value = {}
         mock_response.read.return_value = b"{}"
-        mock_response.__aenter__.return_value = mock_response
-        mock_response.__aexit__.return_value = None
-        mock_session.request.return_value = mock_response
+        mock_session.request = AsyncMock(return_value=mock_response)
 
         request = HTTPRequest(
             url="/upload",
@@ -240,3 +208,140 @@ async def test_aiohttp_upload_file_object(mock_request_dumper, mock_response_loa
             c[1].get("content_type") == "text/plain"
             for c in calls
         )
+
+
+@pytest.mark.asyncio
+async def test_aiohttp_raw_body(mock_request_dumper, mock_response_loader, mock_session):
+    client = AiohttpAsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_session)
+
+    mock_response = AsyncMock()
+    mock_response.status = 200
+    mock_response.headers = {}
+    mock_response.cookies = {}
+    mock_response.read.return_value = b"{}"
+    mock_session.request = AsyncMock(return_value=mock_response)
+
+    request = HTTPRequest(
+        url="/raw", method="POST", header={}, path={}, query={},
+        body={}, file={}, form={}, raw=b"raw-payload"
+    )
+
+    await client.make_request(request)
+
+    call_kwargs = mock_session.request.call_args.kwargs
+    assert call_kwargs["data"] == b"raw-payload"
+
+
+@pytest.mark.asyncio
+async def test_aiohttp_stream_make_request(mock_request_dumper, mock_response_loader, mock_session):
+    class _FakeContent:
+        def iter_chunked(self, chunk_size):
+            async def gen():
+                yield b"a"
+                yield b"b"
+            return gen()
+
+    response = MagicMock()
+    response.status = 200
+    response.headers = {}
+    response.cookies = {}
+    response.content = _FakeContent()
+    response.close = MagicMock()
+    mock_session.request = AsyncMock(return_value=response)
+
+    client = AiohttpAsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_session)
+
+    request = HTTPRequest(
+        url="/download", method="GET", header={}, path={}, query={},
+        body={}, file={}, form={}
+    )
+
+    result = await client.stream_make_request(request, chunk_size=999)
+
+    assert result.status_code == 200
+    chunks = [chunk async for chunk in result.data]
+    assert chunks == [b"a", b"b"]
+    response.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_aiohttp_chunk_stream_closes_without_ever_reading():
+    class _FakeContent:
+        def iter_chunked(self, chunk_size):
+            async def gen():
+                yield b"a"
+                yield b"b"
+            return gen()
+
+    response = MagicMock()
+    response.content = _FakeContent()
+    response.close = MagicMock()
+
+    stream = _AiohttpChunkStream(response, chunk_size=999)
+    await stream.aclose()
+
+    response.close.assert_called_once()
+
+    # Idempotent: closing again, or iterating after close, must not reopen
+    # or re-close the connection.
+    await stream.aclose()
+    assert [chunk async for chunk in stream] == []
+    response.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_aiohttp_chunk_stream_early_break_closes_once():
+    class _FakeContent:
+        def iter_chunked(self, chunk_size):
+            async def gen():
+                yield b"a"
+                yield b"b"
+            return gen()
+
+    response = MagicMock()
+    response.content = _FakeContent()
+    response.close = MagicMock()
+
+    stream = _AiohttpChunkStream(response, chunk_size=999)
+    async for chunk in stream:
+        assert chunk == b"a"
+        break
+    await stream.aclose()
+
+    response.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_aiohttp_chunk_stream_mid_stream_connection_error_translated():
+    class _FakeContent:
+        def iter_chunked(self, chunk_size):
+            async def gen():
+                yield b"a"
+                raise aiohttp.ClientConnectionError("connection lost")
+            return gen()
+
+    response = MagicMock()
+    response.content = _FakeContent()
+
+    stream = _AiohttpChunkStream(response, chunk_size=999)
+    assert await anext(stream) == b"a"
+    with pytest.raises(NetworkError):
+        await anext(stream)
+
+
+@pytest.mark.asyncio
+async def test_aiohttp_chunk_stream_mid_stream_timeout_translated():
+    class _FakeContent:
+        def iter_chunked(self, chunk_size):
+            async def gen():
+                yield b"a"
+                raise TimeoutError("timed out")
+            return gen()
+
+    response = MagicMock()
+    response.content = _FakeContent()
+
+    stream = _AiohttpChunkStream(response, chunk_size=999)
+    assert await anext(stream) == b"a"
+    with pytest.raises(RequestTimeoutError):
+        await anext(stream)

@@ -1,5 +1,6 @@
 import io
 from collections.abc import AsyncGenerator, Generator
+from contextlib import ExitStack, AsyncExitStack
 from pathlib import Path
 from typing import cast
 from unittest.mock import AsyncMock, Mock
@@ -12,10 +13,45 @@ from unihttp.clients.zapros import (
     ZaprosAsyncClient,
     ZaprosSyncClient,
     _stringify_pairs,
-    _to_bytes,
+    _to_bytes, _ZaprosChunkStream, _ZaprosAsyncChunkStream,
 )
 from unihttp.exceptions import NetworkError, RequestTimeoutError
 from unihttp.http import HTTPRequest, UploadFile
+
+
+class _FakeStreamCM:
+    """Real `__enter__`/`__exit__` methods, not `Mock`-assigned ones.
+
+    `ExitStack.enter_context` looks up `type(cm).__exit__` (to match `with`
+    semantics) and calls it unbound as `_exit(cm, *exc)`. A real function
+    handles that as an ordinary bound-method call; a `Mock` object assigned
+    to `cm.__exit__` does not, and ends up receiving `cm` as an extra
+    positional argument. Only a real class avoids that mismatch.
+    """
+
+    def __init__(self, response):
+        self._response = response
+        self.exit_calls: list[tuple] = []
+
+    def __enter__(self):
+        return self._response
+
+    def __exit__(self, *exc_info):
+        self.exit_calls.append(exc_info)
+
+
+class _FakeAsyncStreamCM:
+    """Async counterpart of `_FakeStreamCM` — see its docstring."""
+
+    def __init__(self, response):
+        self._response = response
+        self.exit_calls: list[tuple] = []
+
+    async def __aenter__(self):
+        return self._response
+
+    async def __aexit__(self, *exc_info):
+        self.exit_calls.append(exc_info)
 
 
 class TestToBytes:
@@ -321,15 +357,6 @@ class TestZaprosSyncClient:
         assert kwargs["body"] is None
         assert isinstance(kwargs["multipart"], zapros.Multipart)
 
-    def test_body_and_form_error(self, sync_client: BaseSyncClient):
-        client = cast(ZaprosSyncClient, sync_client)
-        request = HTTPRequest(
-            url="/path", method="POST", header={}, path={}, query={},
-            body={"b": "v"}, file={}, form={"f": "v"},
-        )
-        with pytest.raises(ValueError, match="Cannot use Body with Form or File"):
-            client.make_request(request)
-
     def test_timeout_error(self, sync_client: BaseSyncClient, mocker):
         mocker.patch(
             "zapros.Client.request",
@@ -371,6 +398,73 @@ class TestZaprosSyncClient:
         )
         assert client._session is session
         client.close()
+
+    def test_raw_body(self, sync_client: BaseSyncClient, mocker):
+        mock_request = mocker.patch("zapros.Client.request", return_value=_mock_response())
+
+        client = cast(ZaprosSyncClient, sync_client)
+        request = HTTPRequest(
+            url="/raw", method="POST", header={}, path={}, query={},
+            body={}, file={}, form={}, raw=b"raw-payload"
+        )
+        client.make_request(request)
+
+        assert mock_request.call_args[1]["body"] == b"raw-payload"
+
+    def test_stream_make_request(self, sync_client: BaseSyncClient, mocker):
+        response = Mock()
+        response.status = 200
+        response.headers = {}
+        response.iter_bytes.return_value = iter([b"a", b"b"])
+
+        stream_cm = _FakeStreamCM(response)
+        mocker.patch("zapros.Client.stream", return_value=stream_cm)
+
+        client = cast(ZaprosSyncClient, sync_client)
+        request = HTTPRequest(
+            url="/download", method="GET", header={}, path={}, query={},
+            body={}, file={}, form={}
+        )
+        result = client.stream_make_request(request, chunk_size=1234)
+
+        assert result.status_code == 200
+        chunks = list(result.data)
+        assert chunks == [b"a", b"b"]
+        response.iter_bytes.assert_called_once_with(1234)
+        assert stream_cm.exit_calls == [(None, None, None)]
+
+    def test_chunk_stream_mid_stream_error_translated(self):
+        """A connection drop after some chunks were already yielded must be
+        reported as `NetworkError`/`RequestTimeoutError`, not the raw
+        `zapros` exception."""
+        def gen():
+            yield b"a"
+            raise zapros.ConnectionError("connection lost")
+
+        response = Mock()
+        response.iter_bytes.return_value = gen()
+
+        stream = _ZaprosChunkStream(response, chunk_size=999, stack=ExitStack())
+        assert next(stream) == b"a"
+        with pytest.raises(NetworkError):
+            next(stream)
+
+    def test_chunk_stream_mid_stream_timeout_translated(self):
+        from contextlib import ExitStack
+
+        from unihttp.clients.zapros import _ZaprosChunkStream
+
+        def gen():
+            yield b"a"
+            raise zapros.TimeoutError("timed out")
+
+        response = Mock()
+        response.iter_bytes.return_value = gen()
+
+        stream = _ZaprosChunkStream(response, chunk_size=999, stack=ExitStack())
+        assert next(stream) == b"a"
+        with pytest.raises(RequestTimeoutError):
+            next(stream)
 
 
 class TestZaprosAsyncClient:
@@ -468,16 +562,6 @@ class TestZaprosAsyncClient:
         assert response.data == b"<html>not json</html>"
 
     @pytest.mark.asyncio
-    async def test_body_and_form_error(self, async_client: BaseAsyncClient):
-        client = cast(ZaprosAsyncClient, async_client)
-        request = HTTPRequest(
-            url="/path", method="POST", header={}, path={}, query={},
-            body={"b": "v"}, file={}, form={"f": "v"},
-        )
-        with pytest.raises(ValueError, match="Cannot use Body with Form or File"):
-            await client.make_request(request)
-
-    @pytest.mark.asyncio
     async def test_timeout_error(self, async_client: BaseAsyncClient, mocker):
         mocker.patch(
             "zapros.AsyncClient.request",
@@ -524,3 +608,59 @@ class TestZaprosAsyncClient:
         )
         assert client._session is session
         await client.close()
+
+    @pytest.mark.asyncio
+    async def test_stream_make_request(self, async_client: BaseAsyncClient, mocker):
+        async def gen():
+            yield b"a"
+            yield b"b"
+
+        response = Mock()
+        response.status = 200
+        response.headers = {}
+        response.async_iter_bytes.return_value = gen()
+
+        stream_cm = _FakeAsyncStreamCM(response)
+        mocker.patch("zapros.AsyncClient.stream", return_value=stream_cm)
+
+        client = cast(ZaprosAsyncClient, async_client)
+        request = HTTPRequest(
+            url="/download", method="GET", header={}, path={}, query={},
+            body={}, file={}, form={}
+        )
+        result = await client.stream_make_request(request, chunk_size=1234)
+
+        assert result.status_code == 200
+        chunks = [chunk async for chunk in result.data]
+        assert chunks == [b"a", b"b"]
+        response.async_iter_bytes.assert_called_once_with(1234)
+        assert stream_cm.exit_calls == [(None, None, None)]
+
+    @pytest.mark.asyncio
+    async def test_chunk_stream_mid_stream_error_translated(self):
+
+        async def gen():
+            yield b"a"
+            raise zapros.ConnectionError("connection lost")
+
+        response = Mock()
+        response.async_iter_bytes.return_value = gen()
+
+        stream = _ZaprosAsyncChunkStream(response, chunk_size=999, stack=AsyncExitStack())
+        assert await anext(stream) == b"a"
+        with pytest.raises(NetworkError):
+            await anext(stream)
+
+    @pytest.mark.asyncio
+    async def test_chunk_stream_mid_stream_timeout_translated(self):
+        async def gen():
+            yield b"a"
+            raise zapros.TimeoutError("timed out")
+
+        response = Mock()
+        response.async_iter_bytes.return_value = gen()
+
+        stream = _ZaprosAsyncChunkStream(response, chunk_size=999, stack=AsyncExitStack())
+        assert await anext(stream) == b"a"
+        with pytest.raises(RequestTimeoutError):
+            await anext(stream)

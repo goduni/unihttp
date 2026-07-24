@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from unihttp.bind_method import bind_method
-from unihttp.method import BaseMethod
+from unihttp.method import BaseMethod, StreamMethod
 
 
 class MockMethod(BaseMethod[str]):
@@ -10,22 +10,32 @@ class MockMethod(BaseMethod[str]):
     __method__ = "GET"
 
 
+class MockStreamMethod(StreamMethod):
+    __url__ = "/test/stream"
+    __method__ = "GET"
+
+
 class SyncClient:
     def __init__(self):
         self.call_method = MagicMock(return_value="sync_result")
+        self.call_method_stream = MagicMock(return_value="sync_stream_result")
 
     method = bind_method(MockMethod)
+    stream = bind_method(MockStreamMethod)
 
 
 class AsyncClient:
     def __init__(self):
         self.call_method = AsyncMock(return_value="async_result")
+        self.call_method_stream = AsyncMock(return_value="async_stream_result")
 
     method = bind_method(MockMethod)
+    stream = bind_method(MockStreamMethod)
 
 
 class InvalidClient:
     method = bind_method(MockMethod)
+    stream = bind_method(MockStreamMethod)
 
 
 def test_bind_sync():
@@ -56,3 +66,30 @@ def test_bind_invalid_client():
     client = InvalidClient()
     with pytest.raises(RuntimeError, match="available only for classes with `call_method`"):
         _ = client.method
+
+
+def test_bind_stream_sync():
+    client = SyncClient()
+    result = client.stream()
+
+    assert result == "sync_stream_result"
+    client.call_method_stream.assert_called_once()
+    assert isinstance(client.call_method_stream.call_args[0][0], MockStreamMethod)
+
+
+@pytest.mark.asyncio
+async def test_bind_stream_async():
+    client = AsyncClient()
+    result = await client.stream()
+
+    assert result == "async_stream_result"
+    client.call_method_stream.assert_called_once()
+    assert isinstance(client.call_method_stream.call_args[0][0], MockStreamMethod)
+
+
+def test_bind_stream_invalid_client():
+    client = InvalidClient()
+    with pytest.raises(
+        RuntimeError, match="available only for classes with `call_method_stream`"
+    ):
+        _ = client.stream

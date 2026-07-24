@@ -4,7 +4,8 @@ import pytest
 from unihttp.clients.base import BaseAsyncClient, BaseSyncClient
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
-from unihttp.method import BaseMethod
+from unihttp.http.stream import AsyncChunkStream, ChunkStream
+from unihttp.method import BaseMethod, StreamMethod
 from unihttp.middlewares.base import AsyncMiddleware, Middleware
 
 
@@ -12,6 +13,39 @@ class SimpleMethod(BaseMethod[str]):
     __url__ = "/test"
     __method__ = "GET"
 
+
+class _FakeStreamMethod(StreamMethod):
+    __url__ = "/files/{id}"
+    __method__ = "GET"
+
+
+class _GenChunkStream(ChunkStream):
+    """Test double wiring a plain generator into the ChunkStream contract."""
+
+    def __init__(self, gen, on_close):
+        super().__init__()
+        self._gen = gen
+        self._on_close = on_close
+
+    def _fetch_chunk(self):
+        return next(self._gen)
+
+    def _close_response(self):
+        self._on_close()
+
+
+class StreamClient(BaseSyncClient):
+    def make_request(self, request):
+        raise NotImplementedError
+
+    def stream_make_request(self, request, chunk_size=65536):
+        def gen():
+            yield b"chunk1"
+            yield b"chunk2"
+
+        self.closed = False
+        self.last_request = request
+        return HTTPResponse(200, {}, _GenChunkStream(gen(), lambda: setattr(self, "closed", True)), {}, None)
 
 class TestSyncClient:
     class MockClient(BaseSyncClient):
@@ -84,6 +118,64 @@ class TestSyncClient:
         # Verify it still proceeded to load response since no exception was raised
         assert result == "proceeded"
 
+    def test_call_method_stream_full_consumption(self, mock_request_dumper, mock_response_loader):
+        client = StreamClient("http://base", mock_request_dumper, mock_response_loader)
+        mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
+
+        chunks = []
+        with client.call_method_stream(_FakeStreamMethod()) as stream:
+            for chunk in stream:
+                chunks.append(chunk)
+
+        assert chunks == [b"chunk1", b"chunk2"]
+        assert client.closed is True
+
+    def test_call_method_stream_early_break_still_closes(self, mock_request_dumper, mock_response_loader):
+        client = StreamClient("http://base", mock_request_dumper, mock_response_loader)
+        mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
+
+        with client.call_method_stream(_FakeStreamMethod()) as stream:
+            for _chunk in stream:
+                break
+
+        assert client.closed is True
+
+    def test_call_method_stream_status_not_ok_calls_on_error(self, mock_request_dumper, mock_response_loader):
+        calls = []
+
+        class _StreamMethodWithOnError(StreamMethod):
+            __url__ = "/files/{id}"
+            __method__ = "GET"
+
+            def on_error(self, response):
+                calls.append(response.status_code)
+
+        class _ErrorClient(StreamClient):
+            def stream_make_request(self, request, chunk_size=65536):
+                self.closed = False
+                return HTTPResponse(
+                    404, {}, _GenChunkStream(iter(()), lambda: setattr(self, "closed", True)), {}, None
+                )
+
+            def handle_error(self, response, method):
+                # Never-iterated regression: the caller's `with`/`for` never
+                # runs at all because `call_method_stream` raises before
+                # returning, so closing cannot rely on the iterator having
+                # started.
+                raise RuntimeError(f"HTTP {response.status_code}")
+
+        client = _ErrorClient("http://base", mock_request_dumper, mock_response_loader)
+        mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
+
+        with pytest.raises(RuntimeError):
+            with client.call_method_stream(_StreamMethodWithOnError()) as stream:
+                list(stream)
+
+        assert calls == [404]
+        # The connection must be released as soon as `call_method_stream` sees
+        # the error status, before the caller ever gets a chance to iterate.
+        assert client.closed is True
+
 
 @pytest.mark.asyncio
 class TestAsyncClient:
@@ -130,3 +222,97 @@ class TestAsyncClient:
         await client.call_method(method)
 
         assert order == ["mw1_req", "mw2_req", "mw2_resp", "mw1_resp"]
+
+    class _AsyncGenChunkStream(AsyncChunkStream):
+        """Test double wiring a plain async generator into the AsyncChunkStream contract."""
+
+        def __init__(self, gen, on_close):
+            super().__init__()
+            self._gen = gen
+            self._on_close = on_close
+
+        async def _fetch_chunk(self):
+            return await self._gen.__anext__()
+
+        async def _close_response(self):
+            self._on_close()
+
+    class StreamClient(BaseAsyncClient):
+        async def make_request(self, request):
+            raise NotImplementedError
+
+        async def stream_make_request(self, request, chunk_size=65536):
+            async def gen():
+                yield b"chunk1"
+                yield b"chunk2"
+
+            self.closed = False
+            self.last_request = request
+            return HTTPResponse(
+                200, {}, TestAsyncClient._AsyncGenChunkStream(gen(), lambda: setattr(self, "closed", True)), {}, None
+            )
+
+    async def test_call_method_stream_full_consumption(self, mock_request_dumper, mock_response_loader):
+        client = self.StreamClient("http://base", mock_request_dumper, mock_response_loader)
+        mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
+
+        chunks = []
+        async with await client.call_method_stream(_FakeStreamMethod()) as stream:
+            async for chunk in stream:
+                chunks.append(chunk)
+
+        assert chunks == [b"chunk1", b"chunk2"]
+        assert client.closed is True
+
+    async def test_call_method_stream_early_break_still_closes(self, mock_request_dumper, mock_response_loader):
+        client = self.StreamClient("http://base", mock_request_dumper, mock_response_loader)
+        mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
+
+        async with await client.call_method_stream(_FakeStreamMethod()) as stream:
+            async for _chunk in stream:
+                break
+
+        assert client.closed is True
+
+    async def test_call_method_stream_status_not_ok_calls_on_error(self, mock_request_dumper, mock_response_loader):
+        calls = []
+
+        class _StreamMethodWithOnError(StreamMethod):
+            __url__ = "/files/{id}"
+            __method__ = "GET"
+
+            def on_error(self, response):
+                calls.append(response.status_code)
+
+        async def empty_gen():
+            return
+            yield  # pragma: no cover - makes this an async generator
+
+        class _ErrorClient(self.StreamClient):
+            async def stream_make_request(self, request, chunk_size=65536):
+                self.closed = False
+                return HTTPResponse(
+                    404, {},
+                    TestAsyncClient._AsyncGenChunkStream(empty_gen(), lambda: setattr(self, "closed", True)),
+                    {}, None,
+                )
+
+            def handle_error(self, response, method):
+                # Never-iterated regression: the caller's `async with`/`for`
+                # never runs at all because `call_method_stream` raises
+                # before returning, so closing cannot rely on the async
+                # iterator having started.
+                raise RuntimeError(f"HTTP {response.status_code}")
+
+        client = _ErrorClient("http://base", mock_request_dumper, mock_response_loader)
+        mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
+
+        with pytest.raises(RuntimeError):
+            async with await client.call_method_stream(_StreamMethodWithOnError()) as stream:
+                async for _chunk in stream:
+                    pass
+
+        assert calls == [404]
+        # The connection must be released as soon as `call_method_stream` sees
+        # the error status, before the caller ever gets a chance to iterate.
+        assert client.closed is True
