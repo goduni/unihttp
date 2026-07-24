@@ -27,7 +27,12 @@ class _UrllibChunkStream(ChunkStream):
         self._chunk_size = chunk_size
 
     def _fetch_chunk(self) -> bytes:
-        chunk = self._raw.read(self._chunk_size)
+        try:
+            chunk = self._raw.read(self._chunk_size)
+        except TimeoutError as e:
+            raise RequestTimeoutError(str(e)) from e
+        except (OSError, http.client.HTTPException) as e:
+            raise NetworkError(str(e)) from e
         if not chunk:
             raise StopIteration
         return chunk

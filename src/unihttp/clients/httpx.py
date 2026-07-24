@@ -11,14 +11,47 @@ from unihttp.exceptions import NetworkError, RequestTimeoutError
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
-from unihttp.http.stream import (
-    AsyncChunkStream,
-    AsyncIteratorChunkStream,
-    ChunkStream,
-    IteratorChunkStream,
-)
+from unihttp.http.stream import AsyncChunkStream, ChunkStream
 from unihttp.middlewares.base import AsyncMiddleware, Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
+
+
+class _HTTPXChunkStream(ChunkStream):
+    def __init__(self, response: Response, chunk_size: int) -> None:
+        super().__init__()
+        self._response = response
+        self._iter = response.iter_bytes(chunk_size)
+
+    def _fetch_chunk(self) -> bytes:
+        try:
+            return next(self._iter)
+        except httpx.NetworkError as e:
+            raise NetworkError(str(e)) from e
+        except httpx.TimeoutException as e:
+            raise RequestTimeoutError(str(e)) from e
+
+    def _close_response(self) -> None:
+        self._response.close()
+
+
+class _HTTPXAsyncChunkStream(AsyncChunkStream):
+    """Async counterpart of `_HTTPXChunkStream`."""
+
+    def __init__(self, response: Response, chunk_size: int) -> None:
+        super().__init__()
+        self._response = response
+        self._iter = response.aiter_bytes(chunk_size)
+
+    async def _fetch_chunk(self) -> bytes:
+        try:
+            return await anext(self._iter)
+        except httpx.NetworkError as e:
+            raise NetworkError(str(e)) from e
+        except httpx.TimeoutException as e:
+            raise RequestTimeoutError(str(e)) from e
+
+    async def _close_response(self) -> None:
+        await self._response.aclose()
 
 
 class HTTPXSyncClient(BaseSyncClient):
@@ -122,7 +155,7 @@ class HTTPXSyncClient(BaseSyncClient):
             status_code=response.status_code,
             headers=response.headers,
             cookies=response.cookies,
-            data=IteratorChunkStream(response.iter_bytes(chunk_size), response.close),
+            data=_HTTPXChunkStream(response, chunk_size),
             raw_response=response,
         )
 
@@ -231,9 +264,7 @@ class HTTPXAsyncClient(BaseAsyncClient):
             status_code=response.status_code,
             headers=response.headers,
             cookies=response.cookies,
-            data=AsyncIteratorChunkStream(
-                response.aiter_bytes(chunk_size), response.aclose
-            ),
+            data=_HTTPXAsyncChunkStream(response, chunk_size),
             raw_response=response,
         )
 

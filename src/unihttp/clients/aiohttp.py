@@ -23,7 +23,12 @@ class _AiohttpChunkStream(AsyncChunkStream):
         self._iter = response.content.iter_chunked(chunk_size)
 
     async def _fetch_chunk(self) -> bytes:
-        return await anext(self._iter)
+        try:
+            return await anext(self._iter)
+        except aiohttp.ClientConnectionError as e:
+            raise NetworkError(str(e)) from e
+        except TimeoutError as e:
+            raise RequestTimeoutError(str(e)) from e
 
     async def _close_response(self) -> None:
         self._response.close()

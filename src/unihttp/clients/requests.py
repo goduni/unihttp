@@ -8,9 +8,27 @@ from unihttp.clients.base import BaseSyncClient
 from unihttp.exceptions import NetworkError, RequestTimeoutError
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
-from unihttp.http.stream import ChunkStream, IteratorChunkStream
+from unihttp.http.stream import ChunkStream
 from unihttp.middlewares.base import Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
+
+
+class _RequestsChunkStream(ChunkStream):
+    def __init__(self, response: Response, chunk_size: int) -> None:
+        super().__init__()
+        self._response = response
+        self._iter = response.iter_content(chunk_size=chunk_size)
+
+    def _fetch_chunk(self) -> bytes:
+        try:
+            return next(self._iter)
+        except requests.exceptions.ConnectionError as e:
+            raise NetworkError(str(e)) from e
+        except requests.exceptions.Timeout as e:
+            raise RequestTimeoutError(str(e)) from e
+
+    def _close_response(self) -> None:
+        self._response.close()
 
 
 class RequestsSyncClient(BaseSyncClient):
@@ -92,9 +110,7 @@ class RequestsSyncClient(BaseSyncClient):
             status_code=response.status_code,
             headers=response.headers,
             cookies=response.cookies,
-            data=IteratorChunkStream(
-                response.iter_content(chunk_size=chunk_size), response.close
-            ),
+            data=_RequestsChunkStream(response, chunk_size),
             raw_response=response,
         )
 

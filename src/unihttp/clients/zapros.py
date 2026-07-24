@@ -13,14 +13,47 @@ from unihttp.exceptions import NetworkError, RequestTimeoutError
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
-from unihttp.http.stream import (
-    AsyncChunkStream,
-    AsyncIteratorChunkStream,
-    ChunkStream,
-    IteratorChunkStream,
-)
+from unihttp.http.stream import AsyncChunkStream, ChunkStream
 from unihttp.middlewares.base import AsyncMiddleware, Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
+
+
+class _ZaprosChunkStream(ChunkStream):
+    def __init__(self, response: Any, chunk_size: int, stack: ExitStack) -> None:
+        super().__init__()
+        self._iter = response.iter_bytes(chunk_size)
+        self._stack = stack
+
+    def _fetch_chunk(self) -> bytes:
+        try:
+            return next(self._iter)
+        except zapros.TimeoutError as e:
+            raise RequestTimeoutError(str(e)) from e
+        except zapros.ConnectionError as e:
+            raise NetworkError(str(e)) from e
+
+    def _close_response(self) -> None:
+        self._stack.close()
+
+
+class _ZaprosAsyncChunkStream(AsyncChunkStream):
+    """Async counterpart of `_ZaprosChunkStream`."""
+
+    def __init__(self, response: Any, chunk_size: int, stack: AsyncExitStack) -> None:
+        super().__init__()
+        self._iter = response.async_iter_bytes(chunk_size)
+        self._stack = stack
+
+    async def _fetch_chunk(self) -> bytes:
+        try:
+            return await anext(self._iter)
+        except zapros.TimeoutError as e:
+            raise RequestTimeoutError(str(e)) from e
+        except zapros.ConnectionError as e:
+            raise NetworkError(str(e)) from e
+
+    async def _close_response(self) -> None:
+        await self._stack.aclose()
 
 
 def _stringify_pairs(mapping: Mapping[str, Any]) -> list[tuple[str, str]]:
@@ -224,7 +257,7 @@ class ZaprosSyncClient(BaseSyncClient):
             status_code=response.status,
             headers=response.headers,
             cookies={},
-            data=IteratorChunkStream(response.iter_bytes(chunk_size), stack.close),
+            data=_ZaprosChunkStream(response, chunk_size, stack),
             raw_response=response,
         )
 
@@ -346,9 +379,7 @@ class ZaprosAsyncClient(BaseAsyncClient):
             status_code=response.status,
             headers=response.headers,
             cookies={},
-            data=AsyncIteratorChunkStream(
-                response.async_iter_bytes(chunk_size), stack.aclose
-            ),
+            data=_ZaprosAsyncChunkStream(response, chunk_size, stack),
             raw_response=response,
         )
 

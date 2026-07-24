@@ -11,14 +11,56 @@ from unihttp.exceptions import NetworkError, RequestTimeoutError
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
-from unihttp.http.stream import (
-    AsyncChunkStream,
-    AsyncIteratorChunkStream,
-    ChunkStream,
-    IteratorChunkStream,
-)
+from unihttp.http.stream import AsyncChunkStream, ChunkStream
 from unihttp.middlewares.base import AsyncMiddleware, Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
+
+
+class _NiquestsChunkStream(ChunkStream):
+    def __init__(self, response: Response, chunk_size: int) -> None:
+        super().__init__()
+        self._response = response
+        self._iter = response.iter_content(chunk_size=chunk_size)
+
+    def _fetch_chunk(self) -> bytes:
+        try:
+            return next(self._iter)
+        except niquests.exceptions.ConnectionError as e:
+            raise NetworkError(str(e)) from e
+        except niquests.exceptions.Timeout as e:
+            raise RequestTimeoutError(str(e)) from e
+        except niquests.exceptions.RequestException as e:
+            raise NetworkError(str(e)) from e
+
+    def _close_response(self) -> None:
+        self._response.close()
+
+
+class _NiquestsAsyncChunkStream(AsyncChunkStream):
+    """Async counterpart of `_NiquestsChunkStream`.
+
+    Unlike the other backends, the chunk iterator itself must be awaited to
+    obtain (see `NiquestsAsyncClient.stream_make_request`), so it's passed
+    in already built rather than constructed here.
+    """
+
+    def __init__(self, response: AsyncResponse, chunk_iter: Any) -> None:
+        super().__init__()
+        self._response = response
+        self._iter = chunk_iter
+
+    async def _fetch_chunk(self) -> bytes:
+        try:
+            return await anext(self._iter)
+        except niquests.exceptions.ConnectionError as e:
+            raise NetworkError(str(e)) from e
+        except niquests.exceptions.Timeout as e:
+            raise RequestTimeoutError(str(e)) from e
+        except niquests.exceptions.RequestException as e:
+            raise NetworkError(str(e)) from e
+
+    async def _close_response(self) -> None:
+        await self._response.close()
 
 
 class NiquestsSyncClient(BaseSyncClient):
@@ -134,9 +176,7 @@ class NiquestsSyncClient(BaseSyncClient):
             status_code=response.status_code or 0,
             headers=dict(response.headers),
             cookies=cast(Mapping[str, Any], response.cookies),
-            data=IteratorChunkStream(
-                response.iter_content(chunk_size=chunk_size), response.close
-            ),
+            data=_NiquestsChunkStream(response, chunk_size),
             raw_response=response,
         )
 
@@ -278,7 +318,7 @@ class NiquestsAsyncClient(BaseAsyncClient):
             status_code=response.status_code or 0,
             headers=dict(response.headers),
             cookies=cast(Mapping[str, Any], response.cookies),
-            data=AsyncIteratorChunkStream(chunk_iter, response.close),
+            data=_NiquestsAsyncChunkStream(response, chunk_iter),
             raw_response=response,
         )
 
