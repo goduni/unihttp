@@ -196,7 +196,7 @@ class UrllibSyncClient(BaseSyncClient):
                 response_data = content
 
         return HTTPResponse(
-            status_code=raw.getcode(),
+            status_code=raw.status or 0,
             headers=dict(raw.headers.items()),
             cookies=self._extract_cookies(raw.headers),
             data=response_data,
@@ -209,7 +209,7 @@ class UrllibSyncClient(BaseSyncClient):
         raw = self._do_request(request)
 
         return HTTPResponse(
-            status_code=raw.getcode(),
+            status_code=raw.status or 0,
             headers=dict(raw.headers.items()),
             cookies=self._extract_cookies(raw.headers),
             data=_UrllibChunkStream(raw, chunk_size),
