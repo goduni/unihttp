@@ -56,6 +56,7 @@ class BaseMethod[ResponseType]:
         body_data = data.get("body", {})
         file_data = data.get("file", {})
         form_data = data.get("form", {})
+        raw_data = data.get("raw", None)
 
         url = self.__url__.format(**path_data)
 
@@ -68,6 +69,7 @@ class BaseMethod[ResponseType]:
             body=body_data,
             file=file_data,
             form=form_data,
+            raw=raw_data,
         )
 
     def make_response(

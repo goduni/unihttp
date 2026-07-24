@@ -1,8 +1,10 @@
 from typing import Any, TypeVar
 
 from unihttp.http import UploadFile
+from unihttp.markers import RawMarker
 from unihttp.omitted import Omitted
 from unihttp.serialize import RequestDumper, ResponseLoader
+from unihttp.serializers.adaptix.marker_tools import for_marker
 from unihttp.serializers.adaptix.provider import method_provider
 
 from adaptix import Retort, as_sentinel, dumper
@@ -16,6 +18,8 @@ DEFAULT_RETORT = Retort(
         TypeHintTagsUnwrappingProvider(),
         method_provider(),
         dumper(UploadFile, lambda x: x.to_tuple()),
+        # bytes dumps to base64 by default, but here it must stay raw.
+        dumper(for_marker(RawMarker), lambda x: x),
     ]
 )
 
