@@ -433,6 +433,30 @@ class TestZaprosSyncClient:
         response.iter_bytes.assert_called_once_with(1234)
         assert stream_cm.exit_calls == [(None, None, None)]
 
+    def test_stream_make_request_timeout_error(self, sync_client: BaseSyncClient, mocker):
+        mock_cm = Mock(__enter__=Mock(side_effect=zapros.ReadTimeoutError("Timeout Check")), __exit__=Mock())
+        mocker.patch("zapros.Client.stream", return_value=mock_cm)
+
+        client = cast(ZaprosSyncClient, sync_client)
+        request = HTTPRequest(
+            url="/download", method="GET", header={}, path={}, query={},
+            body={}, file={}, form={}
+        )
+        with pytest.raises(RequestTimeoutError, match="Timeout Check"):
+            client.stream_make_request(request)
+
+    def test_stream_make_request_network_error(self, sync_client: BaseSyncClient, mocker):
+        mock_cm = Mock(__enter__=Mock(side_effect=zapros.ConnectionError("Connection Check")), __exit__=Mock())
+        mocker.patch("zapros.Client.stream", return_value=mock_cm)
+
+        client = cast(ZaprosSyncClient, sync_client)
+        request = HTTPRequest(
+            url="/download", method="GET", header={}, path={}, query={},
+            body={}, file={}, form={}
+        )
+        with pytest.raises(NetworkError, match="Connection Check"):
+            client.stream_make_request(request)
+
     def test_chunk_stream_mid_stream_error_translated(self):
         """A connection drop after some chunks were already yielded must be
         reported as `NetworkError`/`RequestTimeoutError`, not the raw
@@ -592,6 +616,21 @@ class TestZaprosAsyncClient:
             await client.make_request(request)
 
     @pytest.mark.asyncio
+    async def test_raw_body(self, async_client: BaseAsyncClient, mocker):
+        mock_request = mocker.patch(
+            "zapros.AsyncClient.request", new_callable=AsyncMock, return_value=_mock_response()
+        )
+
+        client = cast(ZaprosAsyncClient, async_client)
+        request = HTTPRequest(
+            url="/raw", method="POST", header={}, path={}, query={},
+            body={}, file={}, form={}, raw=b"raw-payload"
+        )
+        await client.make_request(request)
+
+        assert mock_request.call_args[1]["body"] == b"raw-payload"
+
+    @pytest.mark.asyncio
     async def test_close(self, async_client: BaseAsyncClient, mocker):
         mock_close = mocker.patch("zapros.AsyncClient.aclose", new_callable=AsyncMock)
         await async_client.close()
@@ -635,6 +674,38 @@ class TestZaprosAsyncClient:
         assert chunks == [b"a", b"b"]
         response.async_iter_bytes.assert_called_once_with(1234)
         assert stream_cm.exit_calls == [(None, None, None)]
+
+    @pytest.mark.asyncio
+    async def test_stream_make_request_timeout_error(self, async_client: BaseAsyncClient, mocker):
+        mock_cm = Mock(
+            __aenter__=AsyncMock(side_effect=zapros.ConnectTimeoutError("Timeout Check")),
+            __aexit__=AsyncMock(),
+        )
+        mocker.patch("zapros.AsyncClient.stream", return_value=mock_cm)
+
+        client = cast(ZaprosAsyncClient, async_client)
+        request = HTTPRequest(
+            url="/download", method="GET", header={}, path={}, query={},
+            body={}, file={}, form={}
+        )
+        with pytest.raises(RequestTimeoutError, match="Timeout Check"):
+            await client.stream_make_request(request)
+
+    @pytest.mark.asyncio
+    async def test_stream_make_request_network_error(self, async_client: BaseAsyncClient, mocker):
+        mock_cm = Mock(
+            __aenter__=AsyncMock(side_effect=zapros.ConnectionError("Connection Check")),
+            __aexit__=AsyncMock(),
+        )
+        mocker.patch("zapros.AsyncClient.stream", return_value=mock_cm)
+
+        client = cast(ZaprosAsyncClient, async_client)
+        request = HTTPRequest(
+            url="/download", method="GET", header={}, path={}, query={},
+            body={}, file={}, form={}
+        )
+        with pytest.raises(NetworkError, match="Connection Check"):
+            await client.stream_make_request(request)
 
     @pytest.mark.asyncio
     async def test_chunk_stream_mid_stream_error_translated(self):

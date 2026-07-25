@@ -285,6 +285,20 @@ class TestNiquestsAsyncClient:
         )
 
     @pytest.mark.asyncio
+    async def test_raw_body(self, async_client: BaseAsyncClient, mocker):
+        mock_response = Mock(status_code=200, headers={}, cookies={}, content=b"{}")
+        mock_session_request = mocker.patch("niquests.AsyncSession.request", new_callable=AsyncMock)
+        mock_session_request.return_value = mock_response
+
+        request = HTTPRequest(
+            url="/raw", method="POST", header={}, path={}, query={},
+            body={}, file={}, form={}, raw=b"raw-payload"
+        )
+        await async_client.make_request(request)
+
+        assert mock_session_request.call_args[1]["data"] == b"raw-payload"
+
+    @pytest.mark.asyncio
     async def test_network_error(self, async_client: BaseAsyncClient, mocker):
         mocker.patch("niquests.AsyncSession.request", side_effect=niquests.exceptions.ConnectionError("Connection Check"))
         
