@@ -1,3 +1,5 @@
+import httpx
+import httpx2
 import pytest
 from unittest.mock import Mock, AsyncMock, MagicMock
 from unihttp.http.request import HTTPRequest
@@ -42,7 +44,7 @@ def test_httpx_sync_json_error(mock_request, mock_request_dumper, mock_response_
 
 @pytest.mark.asyncio
 async def test_httpx_async_json_error(mock_request, mock_request_dumper, mock_response_loader):
-    mock_session = AsyncMock()
+    mock_session = AsyncMock(spec=httpx.AsyncClient)
     mock_response = Mock()
     mock_response.content = b"not json"
     mock_response.text = "not json"
@@ -71,7 +73,7 @@ def test_httpx2_sync_json_error(mock_request, mock_request_dumper, mock_response
 
 @pytest.mark.asyncio
 async def test_httpx2_async_json_error(mock_request, mock_request_dumper, mock_response_loader):
-    mock_session = AsyncMock()
+    mock_session = AsyncMock(spec=httpx2.AsyncClient)
     mock_response = Mock()
     mock_response.content = b"not json"
     mock_response.text = "not json"
