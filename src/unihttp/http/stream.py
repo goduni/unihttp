@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Iterator
 
 
 class ChunkStream(ABC):
@@ -83,42 +83,3 @@ class AsyncChunkStream(ABC):
 
     async def __aexit__(self, *exc_info: object) -> None:
         await self.aclose()
-
-
-class IteratorChunkStream(ChunkStream):
-    """`ChunkStream` backed by a plain sync byte iterator plus a close callback.
-
-    Fits backends where iteration and cleanup are just `next(iterator)` and
-    a zero-arg call — `response.close`, or an `ExitStack`'s `.close` when
-    the response lives behind a manually-driven context manager. Backends
-    with a mismatched close signature (e.g. sync `close()` on an async
-    response) use a dedicated `ChunkStream` subclass instead.
-    """
-
-    def __init__(self, iterator: Iterator[bytes], close: Callable[[], None]) -> None:
-        super().__init__()
-        self._iter = iterator
-        self._close = close
-
-    def _fetch_chunk(self) -> bytes:
-        return next(self._iter)
-
-    def _close_response(self) -> None:
-        self._close()
-
-
-class AsyncIteratorChunkStream(AsyncChunkStream):
-    """Async counterpart of `IteratorChunkStream`."""
-
-    def __init__(
-        self, iterator: AsyncIterator[bytes], close: Callable[[], Awaitable[None]]
-    ) -> None:
-        super().__init__()
-        self._iter = iterator
-        self._close = close
-
-    async def _fetch_chunk(self) -> bytes:
-        return await anext(self._iter)
-
-    async def _close_response(self) -> None:
-        await self._close()
