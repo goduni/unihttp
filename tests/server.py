@@ -41,28 +41,6 @@ async def sleep_handler(request):
     return web.json_response({"slept": seconds})
 
 
-async def _write_stream(request, total_bytes, status):
-    response = web.StreamResponse(status=status)
-    await response.prepare(request)
-    written = 0
-    while written < total_bytes:
-        piece = min(4096, total_bytes - written)
-        await response.write(b"x" * piece)
-        written += piece
-    await response.write_eof()
-    return response
-
-
-@routes.get("/stream/{total_bytes}")
-async def stream_handler(request):
-    return await _write_stream(request, int(request.match_info["total_bytes"]), 200)
-
-
-@routes.get("/stream-error/{total_bytes}")
-async def stream_error_handler(request):
-    return await _write_stream(request, int(request.match_info["total_bytes"]), 500)
-
-
 async def make_app():
     app = web.Application()
     app.add_routes(routes)
