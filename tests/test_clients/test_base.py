@@ -19,6 +19,48 @@ class _FakeStreamMethod(StreamMethod):
     __method__ = "GET"
 
 
+class Tag(Middleware):
+    """Records its name in `order` when the chain reaches it."""
+
+    def __init__(self, order, name):
+        self.order = order
+        self.name = name
+
+    def handle(self, request, next_handler):
+        self.order.append(self.name)
+        return next_handler(request)
+
+
+class AsyncTag(AsyncMiddleware):
+    def __init__(self, order, name):
+        self.order = order
+        self.name = name
+
+    async def handle(self, request, next_handler):
+        self.order.append(self.name)
+        return await next_handler(request)
+
+
+class Auth(Middleware):
+    """setdefault, like a real auth middleware: first one in wins."""
+
+    def __init__(self, token):
+        self.token = token
+
+    def handle(self, request, next_handler):
+        request.header.setdefault("Auth", self.token)
+        return next_handler(request)
+
+
+class AsyncAuth(AsyncMiddleware):
+    def __init__(self, token):
+        self.token = token
+
+    async def handle(self, request, next_handler):
+        request.header.setdefault("Auth", self.token)
+        return await next_handler(request)
+
+
 class _GenChunkStream(ChunkStream):
     """Test double wiring a plain generator into the ChunkStream contract."""
 
@@ -176,6 +218,55 @@ class TestSyncClient:
         # the error status, before the caller ever gets a chance to iterate.
         assert client.closed is True
 
+    def test_middleware_layers(self, mock_request_dumper, mock_response_loader):
+        order = []
+        seen = []
+
+        class _Method(SimpleMethod):
+            __middleware__ = (Tag(order, "method"),)
+
+        class _Client(self.MockClient):
+            def make_request(self, request):
+                seen.append(request.header.get("Auth"))
+                return HTTPResponse(200, {}, {}, {}, None)
+
+        client = _Client(
+            "http://base", mock_request_dumper, mock_response_loader,
+            middleware=[Tag(order, "client")],
+        )
+        # fresh dicts per call: Auth mutates request.header in place
+        mock_request_dumper.dump.side_effect = lambda *a, **k: {"path": {}, "query": {}, "header": {}, "body": {}}
+        mock_response_loader.load.return_value = "res"
+
+        client.call_method(_Method(), middleware=[Tag(order, "A"), Auth("token-A")])
+        client.call_method(_Method(), middleware=[Tag(order, "B"), Auth("token-B")])
+        client.call_method(SimpleMethod())
+
+        # client (outermost) -> method -> per-call, on every call; a plain
+        # method and a call without middleware= are unaffected.
+        assert order == ["client", "method", "A", "client", "method", "B", "client"]
+        # Auth uses setdefault, so a shared client must not leak the first
+        # caller's token into the second call.
+        assert seen == ["token-A", "token-B", None]
+
+    def test_middleware_layers_stream(self, mock_request_dumper, mock_response_loader):
+        order = []
+        client = StreamClient(
+            "http://base", mock_request_dumper, mock_response_loader,
+            middleware=[Tag(order, "client")],
+        )
+        mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
+
+        class _Method(_FakeStreamMethod):
+            __middleware__ = (Tag(order, "method"),)
+
+        with client.call_method_stream(
+            _Method(), middleware=[Tag(order, "A")]
+        ) as stream:
+            list(stream)
+
+        assert order == ["client", "method", "A"]
+
 
 @pytest.mark.asyncio
 class TestAsyncClient:
@@ -316,3 +407,60 @@ class TestAsyncClient:
         # The connection must be released as soon as `call_method_stream` sees
         # the error status, before the caller ever gets a chance to iterate.
         assert client.closed is True
+
+    async def test_middleware_layers(self, mock_request_dumper, mock_response_loader):
+        order = []
+        hooks = []
+        seen = []
+
+        class _Method(SimpleMethod):
+            __middleware__ = (AsyncTag(order, "method"),)
+
+        class _Client(self.MockClient):
+            async def make_request(self, request):
+                seen.append(request.header.get("Auth"))
+                return HTTPResponse(200, {}, {}, {}, None)
+
+            def validate_response(self, response, method):
+                hooks.append("validate")
+
+        client = _Client(
+            "http://base", mock_request_dumper, mock_response_loader,
+            middleware=[AsyncTag(order, "client")],
+        )
+        # fresh dicts per call: AsyncAuth mutates request.header in place
+        mock_request_dumper.dump.side_effect = lambda *a, **k: {"path": {}, "query": {}, "header": {}, "body": {}}
+        mock_response_loader.load.return_value = "res"
+
+        await client.call_method(
+            _Method(), middleware=[AsyncTag(order, "A"), AsyncAuth("token-A")]
+        )
+        await client.call_method(
+            _Method(), middleware=[AsyncTag(order, "B"), AsyncAuth("token-B")]
+        )
+        await client.call_method(SimpleMethod())
+
+        assert order == ["client", "method", "A", "client", "method", "B", "client"]
+        # Auth uses setdefault: a shared client must not leak the first
+        # caller's token into the second call.
+        assert seen == ["token-A", "token-B", None]
+        assert hooks == ["validate"] * 3
+
+    async def test_middleware_layers_stream(self, mock_request_dumper, mock_response_loader):
+        order = []
+        client = self.StreamClient(
+            "http://base", mock_request_dumper, mock_response_loader,
+            middleware=[AsyncTag(order, "client")],
+        )
+        mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
+
+        class _Method(_FakeStreamMethod):
+            __middleware__ = (AsyncTag(order, "method"),)
+
+        async with await client.call_method_stream(
+            _Method(), middleware=[AsyncTag(order, "A")]
+        ) as stream:
+            async for _chunk in stream:
+                pass
+
+        assert order == ["client", "method", "A"]
