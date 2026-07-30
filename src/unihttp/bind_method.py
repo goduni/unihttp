@@ -3,6 +3,7 @@ import inspect
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Generic, ParamSpec, TypeVar, overload
 
+from unihttp.http.response import HTTPResponse
 from unihttp.http.stream import AsyncChunkStream, ChunkStream
 from unihttp.method import BaseMethod, StreamMethod
 
@@ -95,7 +96,9 @@ def bind_method(  # noqa: UP047
 @overload
 def bind_method(  # noqa: UP047
     method_tp: Callable[MethodParamSpec, StreamMethod],
-) -> MethodBinder[MethodParamSpec, ChunkStream, AsyncChunkStream]: ...
+) -> MethodBinder[
+    MethodParamSpec, HTTPResponse[ChunkStream], HTTPResponse[AsyncChunkStream]
+]: ...
 
 
 def bind_method(method_tp: Callable[..., Any]) -> Any:

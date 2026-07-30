@@ -94,7 +94,7 @@ async def test_async_stream_reassembles_full_body(name, client_cls, threaded_ser
 
     total = 0
     received_chunks = []
-    async with await client.call_method_stream(DownloadStream(TOTAL_BYTES, CHUNK_SIZE)) as chunks:
+    async with (await client.call_method_stream(DownloadStream(TOTAL_BYTES, CHUNK_SIZE))).data as chunks:
         async for chunk in chunks:
             total += len(chunk)
             received_chunks.append(chunk)
@@ -111,7 +111,7 @@ def test_sync_stream_reassembles_full_body(name, client_cls, threaded_server, mo
 
     total = 0
     received_chunks = []
-    with client.call_method_stream(DownloadStream(TOTAL_BYTES, CHUNK_SIZE)) as chunks:
+    with client.call_method_stream(DownloadStream(TOTAL_BYTES, CHUNK_SIZE)).data as chunks:
         for chunk in chunks:
             total += len(chunk)
             received_chunks.append(chunk)

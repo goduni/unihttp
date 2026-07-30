@@ -176,7 +176,7 @@ class BaseSyncClient(BaseClient):
         method: StreamMethod,
         *,
         middleware: Sequence[Middleware] | None = None,
-    ) -> ChunkStream:
+    ) -> HTTPResponse[ChunkStream]:
         """Execute a streaming API method synchronously.
 
         Pipeline mirrors `call_method`, but the terminal handler streams the
@@ -190,10 +190,11 @@ class BaseSyncClient(BaseClient):
                 outermost-first: client `self.middleware`, then these.
 
         Returns:
-            A `ChunkStream` of `bytes` chunks. Use as a context manager
-            (`with client.call_method_stream(method) as stream:`) — it
-            closes the underlying connection on exit, even if the caller
-            stops iterating early.
+            An `HTTPResponse` with `status_code`/`headers` available
+            immediately and `.data` an unconsumed `ChunkStream`. Use `.data`
+            as a context manager (`with client.call_method_stream(method)
+            .data as stream:`) — it closes the underlying connection on
+            exit, even if the caller stops iterating early.
         """
         request = method.build_http_request(request_dumper=self.request_dumper)
 
@@ -211,7 +212,7 @@ class BaseSyncClient(BaseClient):
 
             return response_
 
-        return self._chain_middleware(_send, middleware or ())(request).data
+        return self._chain_middleware(_send, middleware or ())(request)
 
     def close(self) -> None:
         """Close the client and release resources."""
@@ -332,7 +333,7 @@ class BaseAsyncClient(BaseClient):
         method: StreamMethod,
         *,
         middleware: Sequence[AsyncMiddleware] | None = None,
-    ) -> AsyncChunkStream:
+    ) -> HTTPResponse[AsyncChunkStream]:
         """Execute a streaming API method asynchronously.
 
         Pipeline mirrors `call_method`, but the terminal handler streams the
@@ -346,10 +347,12 @@ class BaseAsyncClient(BaseClient):
                 outermost-first: client `self.middleware`, then these.
 
         Returns:
-            An `AsyncChunkStream` of `bytes` chunks. Use as a context
-            manager (`async with await client.call_method_stream(method) as
-            stream:`) — it closes the underlying connection on exit, even
-            if the caller stops iterating early.
+            An `HTTPResponse` with `status_code`/`headers` available
+            immediately and `.data` an unconsumed `AsyncChunkStream`. Use
+            `.data` as a context manager (`async with (await
+            client.call_method_stream(method)).data as stream:`) — it
+            closes the underlying connection on exit, even if the caller
+            stops iterating early.
         """
         request = method.build_http_request(request_dumper=self.request_dumper)
 
@@ -368,8 +371,7 @@ class BaseAsyncClient(BaseClient):
 
             return response_
 
-        response = await self._chain_middleware(_send, middleware or ())(request)
-        return response.data
+        return await self._chain_middleware(_send, middleware or ())(request)
 
     async def close(self) -> None:
         """Close the client and release resources asynchronously."""

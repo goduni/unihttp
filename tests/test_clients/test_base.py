@@ -165,7 +165,7 @@ class TestSyncClient:
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
         chunks = []
-        with client.call_method_stream(_FakeStreamMethod()) as stream:
+        with client.call_method_stream(_FakeStreamMethod()).data as stream:
             for chunk in stream:
                 chunks.append(chunk)
 
@@ -176,7 +176,7 @@ class TestSyncClient:
         client = StreamClient("http://base", mock_request_dumper, mock_response_loader)
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
-        with client.call_method_stream(_FakeStreamMethod()) as stream:
+        with client.call_method_stream(_FakeStreamMethod()).data as stream:
             for _chunk in stream:
                 break
 
@@ -210,7 +210,7 @@ class TestSyncClient:
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
         with pytest.raises(RuntimeError):
-            with client.call_method_stream(_StreamMethodWithOnError()) as stream:
+            with client.call_method_stream(_StreamMethodWithOnError()).data as stream:
                 list(stream)
 
         assert calls == [404]
@@ -252,7 +252,7 @@ class TestSyncClient:
 
         with client.call_method_stream(
             _FakeStreamMethod(), middleware=[Tag(order, "A")]
-        ) as stream:
+        ).data as stream:
             list(stream)
 
         assert order == ["client", "A"]
@@ -338,7 +338,7 @@ class TestAsyncClient:
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
         chunks = []
-        async with await client.call_method_stream(_FakeStreamMethod()) as stream:
+        async with (await client.call_method_stream(_FakeStreamMethod())).data as stream:
             async for chunk in stream:
                 chunks.append(chunk)
 
@@ -349,7 +349,7 @@ class TestAsyncClient:
         client = self.StreamClient("http://base", mock_request_dumper, mock_response_loader)
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
-        async with await client.call_method_stream(_FakeStreamMethod()) as stream:
+        async with (await client.call_method_stream(_FakeStreamMethod())).data as stream:
             async for _chunk in stream:
                 break
 
@@ -389,7 +389,7 @@ class TestAsyncClient:
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
         with pytest.raises(RuntimeError):
-            async with await client.call_method_stream(_StreamMethodWithOnError()) as stream:
+            async with (await client.call_method_stream(_StreamMethodWithOnError())).data as stream:
                 async for _chunk in stream:
                     pass
 
@@ -439,9 +439,9 @@ class TestAsyncClient:
         )
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
-        async with await client.call_method_stream(
+        async with (await client.call_method_stream(
             _FakeStreamMethod(), middleware=[AsyncTag(order, "A")]
-        ) as stream:
+        )).data as stream:
             async for _chunk in stream:
                 pass
 
