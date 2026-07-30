@@ -191,7 +191,15 @@ class UrllibSyncClient(BaseSyncClient):
 
     def make_request(self, request: HTTPRequest) -> HTTPResponse:
         raw = self._do_request(request)
-        content = raw.read()
+
+        try:
+            content = raw.read()
+        except TimeoutError as e:
+            raw.close()
+            raise RequestTimeoutError(str(e)) from e
+        except (OSError, http.client.HTTPException) as e:
+            raw.close()
+            raise NetworkError(str(e)) from e
 
         response_data: Any = None
         if content:

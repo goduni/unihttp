@@ -122,7 +122,14 @@ class AiohttpAsyncClient(BaseAsyncClient):
         response = await self._do_request(request)
 
         response_data: Any = None
-        content = await response.read()
+        try:
+            content = await response.read()
+        except aiohttp.ClientConnectionError as e:
+            response.close()
+            raise NetworkError(str(e)) from e
+        except TimeoutError as e:
+            response.close()
+            raise RequestTimeoutError(str(e)) from e
         if content:
             try:
                 response_data = self.json_loads(content)

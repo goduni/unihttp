@@ -96,6 +96,44 @@ async def test_aiohttp_timeout_error(mock_request_dumper, mock_response_loader, 
 
 
 @pytest.mark.asyncio
+async def test_aiohttp_mid_body_connection_error_translated(
+    mock_request_dumper, mock_response_loader, mock_session
+):
+    client = AiohttpAsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_session)
+
+    mock_response = AsyncMock()
+    mock_response.read.side_effect = aiohttp.ClientConnectionError("connection lost")
+    mock_response.close = MagicMock()
+    mock_session.request = AsyncMock(return_value=mock_response)
+
+    request = HTTPRequest("url", "GET", {}, {}, {}, {}, {}, {})
+
+    with pytest.raises(NetworkError):
+        await client.make_request(request)
+
+    mock_response.close.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_aiohttp_mid_body_timeout_error_translated(
+    mock_request_dumper, mock_response_loader, mock_session
+):
+    client = AiohttpAsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_session)
+
+    mock_response = AsyncMock()
+    mock_response.read.side_effect = TimeoutError("timed out")
+    mock_response.close = MagicMock()
+    mock_session.request = AsyncMock(return_value=mock_response)
+
+    request = HTTPRequest("url", "GET", {}, {}, {}, {}, {}, {})
+
+    with pytest.raises(RequestTimeoutError):
+        await client.make_request(request)
+
+    mock_response.close.assert_called_once()
+
+
+@pytest.mark.asyncio
 async def test_aiohttp_upload_file(mock_request_dumper, mock_response_loader, mock_session):
     from unittest.mock import patch
 

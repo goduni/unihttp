@@ -122,6 +122,44 @@ def test_urllib_timeout_error_direct(
         client.make_request(request)
 
 
+def test_urllib_mid_body_connection_error_translated(
+    mock_request_dumper, mock_response_loader, mock_opener
+):
+    client = make_client(mock_request_dumper, mock_response_loader, mock_opener)
+
+    raw = MagicMock()
+    raw.status = 200
+    raw.headers.items.return_value = []
+    raw.read.side_effect = ConnectionResetError("reset by peer")
+    mock_opener.open.return_value = raw
+
+    request = HTTPRequest("/url", "GET", {}, {}, {}, {}, {}, {})
+
+    with pytest.raises(NetworkError):
+        client.make_request(request)
+
+    raw.close.assert_called_once()
+
+
+def test_urllib_mid_body_timeout_error_translated(
+    mock_request_dumper, mock_response_loader, mock_opener
+):
+    client = make_client(mock_request_dumper, mock_response_loader, mock_opener)
+
+    raw = MagicMock()
+    raw.status = 200
+    raw.headers.items.return_value = []
+    raw.read.side_effect = TimeoutError("timed out")
+    mock_opener.open.return_value = raw
+
+    request = HTTPRequest("/url", "GET", {}, {}, {}, {}, {}, {})
+
+    with pytest.raises(RequestTimeoutError):
+        client.make_request(request)
+
+    raw.close.assert_called_once()
+
+
 def test_urllib_http_error_is_response(
     mock_request_dumper, mock_response_loader, mock_opener
 ):
