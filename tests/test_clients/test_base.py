@@ -222,9 +222,6 @@ class TestSyncClient:
         order = []
         seen = []
 
-        class _Method(SimpleMethod):
-            __middleware__ = (Tag(order, "method"),)
-
         class _Client(self.MockClient):
             def make_request(self, request):
                 seen.append(request.header.get("Auth"))
@@ -238,15 +235,11 @@ class TestSyncClient:
         mock_request_dumper.dump.side_effect = lambda *a, **k: {"path": {}, "query": {}, "header": {}, "body": {}}
         mock_response_loader.load.return_value = "res"
 
-        client.call_method(_Method(), middleware=[Tag(order, "A"), Auth("token-A")])
-        client.call_method(_Method(), middleware=[Tag(order, "B"), Auth("token-B")])
+        client.call_method(SimpleMethod(), middleware=[Tag(order, "A"), Auth("token-A")])
+        client.call_method(SimpleMethod(), middleware=[Tag(order, "B"), Auth("token-B")])
         client.call_method(SimpleMethod())
 
-        # client (outermost) -> method -> per-call, on every call; a plain
-        # method and a call without middleware= are unaffected.
-        assert order == ["client", "method", "A", "client", "method", "B", "client"]
-        # Auth uses setdefault, so a shared client must not leak the first
-        # caller's token into the second call.
+        assert order == ["client", "A", "client", "B", "client"]
         assert seen == ["token-A", "token-B", None]
 
     def test_middleware_layers_stream(self, mock_request_dumper, mock_response_loader):
@@ -257,15 +250,12 @@ class TestSyncClient:
         )
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
-        class _Method(_FakeStreamMethod):
-            __middleware__ = (Tag(order, "method"),)
-
         with client.call_method_stream(
-            _Method(), middleware=[Tag(order, "A")]
+            _FakeStreamMethod(), middleware=[Tag(order, "A")]
         ) as stream:
             list(stream)
 
-        assert order == ["client", "method", "A"]
+        assert order == ["client", "A"]
 
 
 @pytest.mark.asyncio
@@ -413,9 +403,6 @@ class TestAsyncClient:
         hooks = []
         seen = []
 
-        class _Method(SimpleMethod):
-            __middleware__ = (AsyncTag(order, "method"),)
-
         class _Client(self.MockClient):
             async def make_request(self, request):
                 seen.append(request.header.get("Auth"))
@@ -433,16 +420,14 @@ class TestAsyncClient:
         mock_response_loader.load.return_value = "res"
 
         await client.call_method(
-            _Method(), middleware=[AsyncTag(order, "A"), AsyncAuth("token-A")]
+            SimpleMethod(), middleware=[AsyncTag(order, "A"), AsyncAuth("token-A")]
         )
         await client.call_method(
-            _Method(), middleware=[AsyncTag(order, "B"), AsyncAuth("token-B")]
+            SimpleMethod(), middleware=[AsyncTag(order, "B"), AsyncAuth("token-B")]
         )
         await client.call_method(SimpleMethod())
 
-        assert order == ["client", "method", "A", "client", "method", "B", "client"]
-        # Auth uses setdefault: a shared client must not leak the first
-        # caller's token into the second call.
+        assert order == ["client", "A", "client", "B", "client"]
         assert seen == ["token-A", "token-B", None]
         assert hooks == ["validate"] * 3
 
@@ -454,13 +439,10 @@ class TestAsyncClient:
         )
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
-        class _Method(_FakeStreamMethod):
-            __middleware__ = (AsyncTag(order, "method"),)
-
         async with await client.call_method_stream(
-            _Method(), middleware=[AsyncTag(order, "A")]
+            _FakeStreamMethod(), middleware=[AsyncTag(order, "A")]
         ) as stream:
             async for _chunk in stream:
                 pass
 
-        assert order == ["client", "method", "A"]
+        assert order == ["client", "A"]

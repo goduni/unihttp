@@ -1,11 +1,9 @@
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from types import get_original_bases
 from typing import Any, ClassVar, TypeVar, get_args
 
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
-from unihttp.middlewares.base import AsyncMiddleware, Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
 
 ResponseType = TypeVar("ResponseType", bound=Any)
@@ -18,14 +16,10 @@ class RequestMethod:
     Attributes:
         __url__: The URL path pattern (e.g., "/users/{id}").
         __method__: The HTTP method (e.g., "GET").
-        __middleware__: Middleware bound to this endpoint (e.g. retry). Runs
-            inside the client's own middleware, outside any passed per-call.
-            Sync clients only accept `Middleware`, async only `AsyncMiddleware`.
     """
 
     __url__: ClassVar[str]
     __method__: ClassVar[str]
-    __middleware__: ClassVar[Sequence[Middleware | AsyncMiddleware]] = ()
 
     def build_http_request(self, request_dumper: RequestDumper) -> HTTPRequest:
         """Convert this method instance into an HTTPRequest.

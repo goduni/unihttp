@@ -1,7 +1,7 @@
 import functools
 import json
 from collections.abc import Callable, Sequence
-from typing import Any, cast
+from typing import Any
 
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
@@ -93,14 +93,9 @@ class BaseSyncClient(BaseClient):
     def _chain_middleware(
         self,
         handler: Handler,
-        method_middleware: Sequence[Middleware] = (),
         call_middleware: Sequence[Middleware] = (),
     ) -> Handler:
-        for middleware in reversed([
-            *self.middleware,
-            *method_middleware,
-            *call_middleware,
-        ]):
+        for middleware in reversed([*self.middleware, *call_middleware]):
             handler = functools.partial(middleware.handle, next_handler=handler)
         return handler
 
@@ -121,8 +116,7 @@ class BaseSyncClient(BaseClient):
         Args:
             method: The API method instance to execute.
             middleware: Extra middleware for this call only. Chain order is
-                outermost-first: client `self.middleware`, then the method's
-                `__middleware__`, then these.
+                outermost-first: client `self.middleware`, then these.
 
         Returns:
              The deserialized response data as defined by the method's return type.
@@ -143,11 +137,7 @@ class BaseSyncClient(BaseClient):
 
             return response
 
-        http_response = self._chain_middleware(
-            _send,
-            cast("Sequence[Middleware]", method.__middleware__),
-            middleware or (),
-        )(http_request)
+        http_response = self._chain_middleware(_send, middleware or ())(http_request)
 
         return method.make_response(http_response, response_loader=self.response_loader)
 
@@ -197,8 +187,7 @@ class BaseSyncClient(BaseClient):
                 `method.__chunk_size__` controls how many bytes are read per
                 chunk.
             middleware: Extra middleware for this call only. Chain order is
-                outermost-first: client `self.middleware`, then the method's
-                `__middleware__`, then these.
+                outermost-first: client `self.middleware`, then these.
 
         Returns:
             A `ChunkStream` of `bytes` chunks. Use as a context manager
@@ -222,11 +211,7 @@ class BaseSyncClient(BaseClient):
 
             return response_
 
-        return self._chain_middleware(
-            _send,
-            cast("Sequence[Middleware]", method.__middleware__),
-            middleware or (),
-        )(request).data
+        return self._chain_middleware(_send, middleware or ())(request).data
 
     def close(self) -> None:
         """Close the client and release resources."""
@@ -262,14 +247,9 @@ class BaseAsyncClient(BaseClient):
     def _chain_middleware(
         self,
         handler: AsyncHandler,
-        method_middleware: Sequence[AsyncMiddleware] = (),
         call_middleware: Sequence[AsyncMiddleware] = (),
     ) -> AsyncHandler:
-        for middleware in reversed([
-            *self.middleware,
-            *method_middleware,
-            *call_middleware,
-        ]):
+        for middleware in reversed([*self.middleware, *call_middleware]):
             handler = functools.partial(middleware.handle, next_handler=handler)
         return handler
 
@@ -290,8 +270,7 @@ class BaseAsyncClient(BaseClient):
         Args:
             method: The API method instance to execute.
             middleware: Extra middleware for this call only. Chain order is
-                outermost-first: client `self.middleware`, then the method's
-                `__middleware__`, then these.
+                outermost-first: client `self.middleware`, then these.
 
         Returns:
              The deserialized response data as defined by the method's return type.
@@ -312,11 +291,9 @@ class BaseAsyncClient(BaseClient):
 
             return response
 
-        http_response = await self._chain_middleware(
-            _send,
-            cast("Sequence[AsyncMiddleware]", method.__middleware__),
-            middleware or (),
-        )(http_request)
+        http_response = await self._chain_middleware(_send, middleware or ())(
+            http_request
+        )
 
         return method.make_response(http_response, response_loader=self.response_loader)
 
@@ -366,8 +343,7 @@ class BaseAsyncClient(BaseClient):
                 `method.__chunk_size__` controls how many bytes are read per
                 chunk.
             middleware: Extra middleware for this call only. Chain order is
-                outermost-first: client `self.middleware`, then the method's
-                `__middleware__`, then these.
+                outermost-first: client `self.middleware`, then these.
 
         Returns:
             An `AsyncChunkStream` of `bytes` chunks. Use as a context
@@ -392,11 +368,7 @@ class BaseAsyncClient(BaseClient):
 
             return response_
 
-        response = await self._chain_middleware(
-            _send,
-            cast("Sequence[AsyncMiddleware]", method.__middleware__),
-            middleware or (),
-        )(request)
+        response = await self._chain_middleware(_send, middleware or ())(request)
         return response.data
 
     async def close(self) -> None:
