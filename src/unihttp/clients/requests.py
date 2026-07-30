@@ -57,12 +57,12 @@ class RequestsSyncClient(BaseSyncClient):
         content = None
         if request.raw is not None:
             content = request.raw
-        elif request.form:
-            content = request.form
-        if request.body and request.raw is None:
+        elif request.body:
             content = self.json_dumps(request.body)
             if "Content-Type" not in request.header:
                 request.header["Content-Type"] = "application/json"
+        elif request.form:
+            content = request.form
         return content
 
     def _do_request(self, request: HTTPRequest, *, stream: bool) -> Response:
