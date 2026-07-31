@@ -1,6 +1,6 @@
 import functools
 import inspect
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING, Any, Generic, ParamSpec, TypeVar, overload
 
 from unihttp.http.response import HTTPResponse
@@ -9,6 +9,7 @@ from unihttp.method import BaseMethod, StreamMethod
 
 if TYPE_CHECKING:
     from unihttp.clients.base import BaseAsyncClient, BaseSyncClient
+    from unihttp.middlewares.base import Middleware
 
 
 MethodParamSpec = ParamSpec("MethodParamSpec")
@@ -18,15 +19,17 @@ AsyncResultT = TypeVar("AsyncResultT")
 
 
 class MethodBinder(Generic[MethodParamSpec, SyncResultT, AsyncResultT]):  # noqa: UP046
-    __slots__ = ("_call_name", "_method_tp")
+    __slots__ = ("_call_name", "_method_tp", "_middleware")
 
     def __init__(
         self,
         method_tp: Callable[MethodParamSpec, Any],
         call_name: str,
+        middleware: Sequence["Middleware"] | None = None,
     ) -> None:
         self._method_tp = method_tp
         self._call_name = call_name
+        self._middleware = middleware
 
     @overload
     def __get__(
@@ -40,14 +43,14 @@ class MethodBinder(Generic[MethodParamSpec, SyncResultT, AsyncResultT]):  # noqa
         self,
         instance: "BaseSyncClient",
         owner: type,
-    ) -> Callable[MethodParamSpec, SyncResultT]: ...
+    ) -> Callable[..., SyncResultT]: ...
 
     @overload
     def __get__(
         self,
         instance: "BaseAsyncClient",
         owner: type,
-    ) -> Callable[MethodParamSpec, Awaitable[AsyncResultT]]: ...
+    ) -> Callable[..., Awaitable[AsyncResultT]]: ...
 
     def __get__(
         self,
@@ -73,7 +76,7 @@ class MethodBinder(Generic[MethodParamSpec, SyncResultT, AsyncResultT]):  # noqa
                 *args: MethodParamSpec.args,
                 **kwargs: MethodParamSpec.kwargs,
             ) -> Any:
-                return await call(method_tp(*args, **kwargs))
+                return await call(method_tp(*args, **kwargs), middleware=self._middleware)
 
             return async_wrapper
 
@@ -82,7 +85,7 @@ class MethodBinder(Generic[MethodParamSpec, SyncResultT, AsyncResultT]):  # noqa
             *args: MethodParamSpec.args,
             **kwargs: MethodParamSpec.kwargs,
         ) -> Any:
-            return call(method_tp(*args, **kwargs))
+            return call(method_tp(*args, **kwargs), middleware=self._middleware)
 
         return sync_wrapper
 
@@ -101,7 +104,9 @@ def bind_method(  # noqa: UP047
 ]: ...
 
 
-def bind_method(method_tp: Callable[..., Any]) -> Any:
+def bind_method(
+    method_tp: Callable[..., Any], middleware: Sequence["Middleware"] | None = None
+) -> Any:
     if isinstance(method_tp, type) and issubclass(method_tp, StreamMethod):
-        return MethodBinder(method_tp, "call_method_stream")
-    return MethodBinder(method_tp, "call_method")
+        return MethodBinder(method_tp, "call_method_stream", middleware=middleware)
+    return MethodBinder(method_tp, "call_method", middleware=middleware)
