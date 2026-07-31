@@ -19,7 +19,9 @@
     - [1. Define Methods](#1-define-methods)
     - [2. Client Implementation Strategies](#2-client-implementation-strategies)
 - [Markers Reference](#markers-reference)
+- [Streaming Methods](#streaming-methods)
 - [Middleware](#middleware)
+    - [Per-Call and Per-Method Middleware](#per-call-and-per-method-middleware)
 - [Error Handling](#error-handling)
     - [1. Method-Level Handling](#1-method-level-handling)
     - [2. Client-Level Handling](#2-client-level-handling)
@@ -84,7 +86,8 @@ See [Powered by Adaptix](#powered-by-adaptix), [Pydantic Integration](#pydantic-
 
 ```python
 from dataclasses import dataclass
-from unihttp import BaseMethod, Path, Query, Body, Header, Form, File
+from unihttp.markers import Path, Query, Body, Header, Form, File
+from unihttp.method import BaseMethod
 
 
 @dataclass
@@ -125,7 +128,7 @@ This is the most concise way to define your client. You simply bind the methods 
 > see [PY-51768](https://youtrack.jetbrains.com/issue/PY-51768)). This is expected to be fixed in the **2026.1** version.
 
 ```python
-from unihttp import bind_method
+from unihttp.bind_method import bind_method
 from unihttp.clients.httpx import HTTPXSyncClient
 from unihttp.serializers.adaptix import DEFAULT_RETORT
 
@@ -168,8 +171,70 @@ class UserClient(HTTPXSyncClient):
 - `Header`: Adds HTTP headers to the request.
 - `Form`: Sends data as form-encoded (`application/x-www-form-urlencoded`).
 - `File`: Used for multipart file uploads.
-    - `UploadFile`: A wrapper for file uploads that allows specifying a filename and content type (e.g.,
-      `UploadFile(b"content", filename="test.txt")`).
+    - `UploadFile` (from `unihttp.http`): A wrapper for file uploads that allows specifying a filename and content
+      type (e.g., `UploadFile(b"content", filename="test.txt")`).
+- `Raw`: Sends a pre-built `bytes`/`str` value as the request body, bypassing serialization entirely. Mutually
+  exclusive with `Body` and with `Form`/`File` — combining `Raw` with either raises a `ValueError`.
+
+## Streaming Methods
+
+For endpoints whose body you want to read incrementally (downloads, SSE, large payloads) instead of buffering it
+fully, subclass `StreamMethod` instead of `BaseMethod`. There is no `response_loader` step — the body is never
+fully read.
+
+```python
+from dataclasses import dataclass
+from unihttp.method import StreamMethod
+from unihttp.markers import Path
+
+
+@dataclass
+class DownloadFile(StreamMethod):
+    __url__ = "/files/{id}"
+    __method__ = "GET"
+
+    id: Path[int]
+```
+
+Either way, the call returns immediately with `status_code`/`headers` available; `.data` is an unconsumed
+`ChunkStream` (or `AsyncChunkStream`) — use it as a context manager so the underlying connection is released even if
+you stop iterating early.
+
+#### Option A: Declarative Client (via `bind_method`)
+
+`bind_method` detects `StreamMethod` subclasses automatically and routes them through `call_method_stream`.
+
+```python
+class FileClient(HTTPXSyncClient):
+    download_file = bind_method(DownloadFile)
+
+
+client = FileClient(base_url="https://api.example.com", ...)
+
+with client.download_file(id=123).data as stream:
+    for chunk in stream:
+        f.write(chunk)
+
+# Async client, note the extra `await`
+async with (await client.download_file(id=123)).data as stream:
+    async for chunk in stream:
+        await f.write(chunk)
+```
+
+#### Option B: Imperative Client (via `call_method_stream`)
+
+```python
+with client.call_method_stream(DownloadFile(id=123)).data as stream:
+    for chunk in stream:
+        f.write(chunk)
+
+# Async client, note the extra `await`
+async with (await client.call_method_stream(DownloadFile(id=123))).data as stream:
+    async for chunk in stream:
+        await f.write(chunk)
+```
+
+Use `__chunk_size__` on the method to control how many bytes are read per chunk (defaults to 65536).
 
 ## Middleware
 
@@ -199,9 +264,32 @@ client = HTTPXSyncClient(
 )
 ```
 
+### Per-Call and Per-Method Middleware
+
+Client-level middleware runs for every call. To scope middleware to a single request or a single bound method, pass
+`middleware` to `call_method`/`call_method_stream` or `bind_method`. Chain order is outermost-first: client
+`self.middleware`, then these.
+
+```python
+# Per-call, via call_method
+client.call_method(GetUser(id=123), middleware=[AuthMiddleware()])
+
+# Per-method, via bind_method
+class UserClient(HTTPXSyncClient):
+    get_user = bind_method(GetUser, middleware=[AuthMiddleware()])
+```
+
 ## Error Handling
 
 `unihttp` offers a layered approach to error handling, giving you control at multiple levels.
+
+Every `HTTPResponse` has a `raise_for_status()` method that raises `ClientError` (4xx) or `ServerError` (5xx),
+each carrying the original `response`:
+
+```python
+response = client.call_method(GetUser(id=123))
+response.raise_for_status()
+```
 
 ### 1. Method-Level Handling
 
