@@ -43,14 +43,14 @@ class MethodBinder(Generic[MethodParamSpec, SyncResultT, AsyncResultT]):  # noqa
         self,
         instance: "BaseSyncClient",
         owner: type,
-    ) -> Callable[..., SyncResultT]: ...
+    ) -> Callable[MethodParamSpec, SyncResultT]: ...
 
     @overload
     def __get__(
         self,
         instance: "BaseAsyncClient",
         owner: type,
-    ) -> Callable[..., Awaitable[AsyncResultT]]: ...
+    ) -> Callable[MethodParamSpec, Awaitable[AsyncResultT]]: ...
 
     def __get__(
         self,

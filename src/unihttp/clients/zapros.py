@@ -199,7 +199,7 @@ class ZaprosSyncClient(BaseSyncClient):
         body, form, multipart = self._build_payload(request)
 
         try:
-            response = self._session.request(
+            response = self._session.request(  # type: ignore[call-overload]
                 method=request.method,
                 url=urljoin(self.base_url, request.url),
                 headers=request.header,
@@ -235,7 +235,7 @@ class ZaprosSyncClient(BaseSyncClient):
     ) -> HTTPResponse[ChunkStream]:
         body, form, multipart = self._build_payload(request)
 
-        stream_cm = self._session.stream(
+        stream_cm = self._session.stream(  # type: ignore[call-overload]
             method=request.method,
             url=urljoin(self.base_url, request.url),
             headers=request.header,
@@ -321,7 +321,7 @@ class ZaprosAsyncClient(BaseAsyncClient):
         body, form, multipart = self._build_payload(request)
 
         try:
-            response = await self._session.request(
+            response = await self._session.request(  # type: ignore[call-overload]
                 method=request.method,
                 url=urljoin(self.base_url, request.url),
                 headers=request.header,
@@ -357,7 +357,7 @@ class ZaprosAsyncClient(BaseAsyncClient):
     ) -> HTTPResponse[AsyncChunkStream]:
         body, form, multipart = self._build_payload(request)
 
-        stream_cm = self._session.stream(
+        stream_cm = self._session.stream(  # type: ignore[call-overload]
             method=request.method,
             url=urljoin(self.base_url, request.url),
             headers=request.header,
