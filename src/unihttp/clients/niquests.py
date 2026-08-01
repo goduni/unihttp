@@ -1,18 +1,66 @@
 import json
 from collections.abc import Callable, Mapping
-from typing import Any, cast
+from typing import Any, Literal, cast, overload
 from urllib.parse import urljoin
 
 import niquests
-from niquests import AsyncSession, Session
+from niquests import AsyncResponse, AsyncSession, Response, Session
 
 from unihttp.clients.base import BaseAsyncClient, BaseSyncClient
 from unihttp.exceptions import NetworkError, RequestTimeoutError
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
+from unihttp.http.stream import AsyncChunkStream, ChunkStream
 from unihttp.middlewares.base import AsyncMiddleware, Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
+
+
+class _NiquestsChunkStream(ChunkStream):
+    def __init__(self, response: Response, chunk_size: int) -> None:
+        super().__init__()
+        self._response = response
+        self._iter = response.iter_content(chunk_size=chunk_size)
+
+    def _fetch_chunk(self) -> bytes:
+        try:
+            return next(self._iter)
+        except niquests.exceptions.ConnectionError as e:
+            raise NetworkError(str(e)) from e
+        except niquests.exceptions.Timeout as e:
+            raise RequestTimeoutError(str(e)) from e
+        except niquests.exceptions.RequestException as e:
+            raise NetworkError(str(e)) from e
+
+    def _close_response(self) -> None:
+        self._response.close()
+
+
+class _NiquestsAsyncChunkStream(AsyncChunkStream):
+    """Async counterpart of `_NiquestsChunkStream`.
+
+    Unlike the other backends, the chunk iterator itself must be awaited to
+    obtain (see `NiquestsAsyncClient.stream_make_request`), so it's passed
+    in already built rather than constructed here.
+    """
+
+    def __init__(self, response: AsyncResponse, chunk_iter: Any) -> None:
+        super().__init__()
+        self._response = response
+        self._iter = chunk_iter
+
+    async def _fetch_chunk(self) -> bytes:
+        try:
+            return await anext(self._iter)
+        except niquests.exceptions.ConnectionError as e:
+            raise NetworkError(str(e)) from e
+        except niquests.exceptions.Timeout as e:
+            raise RequestTimeoutError(str(e)) from e
+        except niquests.exceptions.RequestException as e:
+            raise NetworkError(str(e)) from e
+
+    async def _close_response(self) -> None:
+        await self._response.close()
 
 
 class NiquestsSyncClient(BaseSyncClient):
@@ -67,32 +115,32 @@ class NiquestsSyncClient(BaseSyncClient):
                 file_list.append((key, value))
         return file_list
 
-    def make_request(self, request: HTTPRequest) -> HTTPResponse:
+    def _build_content(self, request: HTTPRequest) -> Any:
+        """Resolve the request body: raw takes priority, then JSON body, then form."""
         content = None
-
-        if request.form:
-            content = request.form
-
-        if request.body:
-            if request.form or request.file:
-                raise ValueError(
-                    "Cannot use Body with Form or File. "
-                    "Use Form for fields in multipart requests."
-                )
-
+        if request.raw is not None:
+            content = request.raw
+        elif request.body:
             content = self.json_dumps(request.body)
             if "Content-Type" not in request.header:
                 request.header["Content-Type"] = "application/json"
+        elif request.form:
+            content = request.form
+        return content
+
+    def _do_request(self, request: HTTPRequest, *, stream: bool) -> Response:
+        content = self._build_content(request)
 
         try:
             files = self._convert_files(request.file) if request.file else None
-            response = self._session.request(
+            return self._session.request(
                 method=request.method,
                 url=urljoin(self.base_url, request.url),
                 headers=request.header,
                 params=request.query,
                 files=files,
                 data=content,
+                stream=stream,
             )
         except niquests.exceptions.ConnectionError as e:
             raise NetworkError(str(e)) from e
@@ -100,6 +148,9 @@ class NiquestsSyncClient(BaseSyncClient):
             raise RequestTimeoutError(str(e)) from e
         except niquests.exceptions.RequestException as e:
             raise NetworkError(str(e)) from e
+
+    def make_request(self, request: HTTPRequest) -> HTTPResponse:
+        response = self._do_request(request, stream=False)
 
         response_data: Any = None
         if response.content:
@@ -113,6 +164,19 @@ class NiquestsSyncClient(BaseSyncClient):
             headers=dict(response.headers),
             cookies=cast(Mapping[str, Any], response.cookies),
             data=response_data,
+            raw_response=response,
+        )
+
+    def stream_make_request(
+        self, request: HTTPRequest, chunk_size: int = 65536
+    ) -> HTTPResponse[ChunkStream]:
+        response = self._do_request(request, stream=True)
+
+        return HTTPResponse(
+            status_code=response.status_code or 0,
+            headers=dict(response.headers),
+            cookies=cast(Mapping[str, Any], response.cookies),
+            data=_NiquestsChunkStream(response, chunk_size),
             raw_response=response,
         )
 
@@ -163,32 +227,57 @@ class NiquestsAsyncClient(BaseAsyncClient):
                 file_list.append((key, value))
         return file_list
 
-    async def make_request(self, request: HTTPRequest) -> HTTPResponse:
+    def _build_content(self, request: HTTPRequest) -> Any:
+        """Resolve the request body: raw takes priority, then JSON body, then form."""
         content = None
-
-        if request.form:
-            content = request.form
-
-        if request.body:
-            if request.form or request.file:
-                raise ValueError(
-                    "Cannot use Body with Form or File. "
-                    "Use Form for fields in multipart requests."
-                )
-
+        if request.raw is not None:
+            content = request.raw
+        elif request.body:
             content = self.json_dumps(request.body)
             if "Content-Type" not in request.header:
                 request.header["Content-Type"] = "application/json"
+        elif request.form:
+            content = request.form
+        return content
+
+    @overload
+    async def _do_request(
+        self, request: HTTPRequest, *, stream: Literal[False]
+    ) -> Response: ...
+    @overload
+    async def _do_request(
+        self, request: HTTPRequest, *, stream: Literal[True]
+    ) -> AsyncResponse: ...
+
+    async def _do_request(
+        self, request: HTTPRequest, *, stream: bool
+    ) -> Response | AsyncResponse:
+        # `stream` must stay a *literal* at each `self._session.request(...)`
+        # call site: niquests overloads that call on it (Response vs
+        # AsyncResponse, whose `.content` is sync vs a coroutine), and a
+        # plain `bool` can't select between them.
+        content = self._build_content(request)
+        files = self._convert_files(request.file) if request.file else None
 
         try:
-            files = self._convert_files(request.file) if request.file else None
-            response = await self._session.request(
+            if stream:
+                return await self._session.request(
+                    method=request.method,
+                    url=urljoin(self.base_url, request.url),
+                    headers=request.header,
+                    params=request.query,
+                    files=files,
+                    data=content,
+                    stream=True,
+                )
+            return await self._session.request(
                 method=request.method,
                 url=urljoin(self.base_url, request.url),
                 headers=request.header,
                 params=request.query,
                 files=files,
                 data=content,
+                stream=False,
             )
         except niquests.exceptions.ConnectionError as e:
             raise NetworkError(str(e)) from e
@@ -196,6 +285,9 @@ class NiquestsAsyncClient(BaseAsyncClient):
             raise RequestTimeoutError(str(e)) from e
         except niquests.exceptions.RequestException as e:
             raise NetworkError(str(e)) from e
+
+    async def make_request(self, request: HTTPRequest) -> HTTPResponse:
+        response = await self._do_request(request, stream=False)
 
         response_data: Any = None
         if response.content:
@@ -209,6 +301,24 @@ class NiquestsAsyncClient(BaseAsyncClient):
             headers=dict(response.headers),
             cookies=cast(Mapping[str, Any], response.cookies),
             data=response_data,
+            raw_response=response,
+        )
+
+    async def stream_make_request(
+        self, request: HTTPRequest, chunk_size: int = 65536
+    ) -> HTTPResponse[AsyncChunkStream]:
+        response = await self._do_request(request, stream=True)
+
+        # niquests builds the chunk iterator asynchronously (unlike the
+        # other backends' iter_bytes/iter_content, which are plain sync
+        # calls even on an async response) — await it once, up front.
+        chunk_iter = await response.iter_content(chunk_size=chunk_size)
+
+        return HTTPResponse(
+            status_code=response.status_code or 0,
+            headers=dict(response.headers),
+            cookies=cast(Mapping[str, Any], response.cookies),
+            data=_NiquestsAsyncChunkStream(response, chunk_iter),
             raw_response=response,
         )
 

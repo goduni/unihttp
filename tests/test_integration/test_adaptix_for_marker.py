@@ -14,8 +14,9 @@ from unihttp.markers import (
     PathMarker,
     Query,
     QueryMarker,
+    Raw,
 )
-from unihttp.method import BaseMethod
+from unihttp.method import BaseMethod, StreamMethod
 from unihttp.serializers.adaptix import DEFAULT_RETORT
 from unihttp.serializers.adaptix.marker_tools import for_marker
 
@@ -111,3 +112,19 @@ def test_for_marker() -> None:
         "random_field": "random",
     }
     assert retort.dump(data) == excepted
+
+
+def test_raw_marker_dumps_flat_and_verbatim() -> None:
+    @dataclass
+    class SendRaw(BaseMethod[Any]):
+        payload: Raw[bytes]
+
+    assert DEFAULT_RETORT.dump(SendRaw(payload=b"hello")) == {"raw": b"hello"}
+
+
+def test_stream_method_gets_marker_based_dumping() -> None:
+    @dataclass
+    class DownloadFile(StreamMethod):
+        file_id: Path[int]
+
+    assert DEFAULT_RETORT.dump(DownloadFile(file_id=42)) == {"path": {"file_id": 42}}

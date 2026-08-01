@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from typing import Annotated, Any, get_args, get_origin, override
 
-from unihttp.markers import Marker
+from unihttp.markers import Marker, RawMarker
 
 from adaptix import Mediator, P, TypeHint, create_loc_stack_checker
 from adaptix._internal.model_tools.definitions import BaseField
@@ -94,6 +94,8 @@ class DefaultMarkerFieldPathMaker(MarkerFieldPathMaker):
     ) -> KeyPath:
         # if marker is Path, then ("user_id",) -> ("path", "user_id")
         # if marker is Body, then ("username",) -> ("body", "username")
+        if isinstance(marker, RawMarker):
+            return (marker.name,)
         return marker.name, *key_path
 
 

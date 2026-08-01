@@ -11,6 +11,8 @@ from unihttp.markers import (
     PathMarker,
     Query,
     QueryMarker,
+    Raw,
+    RawMarker,
 )
 
 
@@ -28,6 +30,7 @@ def test_marker_names():
     assert BodyMarker.name == "body"
     assert HeaderMarker.name == "header"
     assert FileMarker.name == "file"
+    assert RawMarker.name == "raw"
 
 
 def test_annotated_markers():
@@ -57,6 +60,11 @@ def test_annotated_markers():
     type_args = get_args(File[bytes])
     assert type_args[0] == bytes
     assert isinstance(type_args[1], FileMarker)
+
+    # Raw
+    type_args = get_args(Raw[bytes])
+    assert type_args[0] == bytes
+    assert isinstance(type_args[1], RawMarker)
 
 
 def test_marker_instance_caching():

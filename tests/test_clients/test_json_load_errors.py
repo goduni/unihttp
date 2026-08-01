@@ -1,3 +1,5 @@
+import httpx
+import httpx2
 import pytest
 from unittest.mock import Mock, AsyncMock, MagicMock
 from unihttp.http.request import HTTPRequest
@@ -34,23 +36,23 @@ def test_httpx_sync_json_error(mock_request, mock_request_dumper, mock_response_
     mock_response.status_code = 200
     mock_response.headers = {}
     mock_response.cookies = {}
-    mock_session.request.return_value = mock_response
-    
+    mock_session.send.return_value = mock_response
+
     client = HTTPXSyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_session)
     response = client.make_request(mock_request)
     assert response.data == b"not json"
 
 @pytest.mark.asyncio
 async def test_httpx_async_json_error(mock_request, mock_request_dumper, mock_response_loader):
-    mock_session = AsyncMock()
+    mock_session = AsyncMock(spec=httpx.AsyncClient)
     mock_response = Mock()
     mock_response.content = b"not json"
     mock_response.text = "not json"
     mock_response.status_code = 200
     mock_response.headers = {}
     mock_response.cookies = {}
-    mock_session.request.return_value = mock_response
-    
+    mock_session.send.return_value = mock_response
+
     client = HTTPXAsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_session)
     response = await client.make_request(mock_request)
     assert response.data == b"not json"
@@ -63,7 +65,7 @@ def test_httpx2_sync_json_error(mock_request, mock_request_dumper, mock_response
     mock_response.status_code = 200
     mock_response.headers = {}
     mock_response.cookies = {}
-    mock_session.request.return_value = mock_response
+    mock_session.send.return_value = mock_response
 
     client = HTTPX2SyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_session)
     response = client.make_request(mock_request)
@@ -71,14 +73,14 @@ def test_httpx2_sync_json_error(mock_request, mock_request_dumper, mock_response
 
 @pytest.mark.asyncio
 async def test_httpx2_async_json_error(mock_request, mock_request_dumper, mock_response_loader):
-    mock_session = AsyncMock()
+    mock_session = AsyncMock(spec=httpx2.AsyncClient)
     mock_response = Mock()
     mock_response.content = b"not json"
     mock_response.text = "not json"
     mock_response.status_code = 200
     mock_response.headers = {}
     mock_response.cookies = {}
-    mock_session.request.return_value = mock_response
+    mock_session.send.return_value = mock_response
 
     client = HTTPX2AsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_session)
     response = await client.make_request(mock_request)
@@ -92,10 +94,8 @@ async def test_aiohttp_json_error(mock_request, mock_request_dumper, mock_respon
     mock_response.headers = {}
     mock_response.cookies = {}
     
-    # aiohttp uses context manager
-    mock_session = MagicMock() # Use MagicMock for context manager
-    mock_session.request.return_value.__aenter__ = AsyncMock(return_value=mock_response)
-    mock_session.request.return_value.__aexit__ = AsyncMock()
+    mock_session = MagicMock()
+    mock_session.request = AsyncMock(return_value=mock_response)
     
     client = AiohttpAsyncClient("http://base", mock_request_dumper, mock_response_loader, session=mock_session)
     response = await client.make_request(mock_request)

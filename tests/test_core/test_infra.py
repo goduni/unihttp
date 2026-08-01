@@ -1,6 +1,7 @@
 import tempfile
 from pathlib import Path
 
+import pytest
 from unihttp.exceptions import ClientError, HTTPStatusError, ServerError
 from unihttp.http.files import UploadFile
 from unihttp.http.response import HTTPResponse
@@ -68,3 +69,21 @@ def test_response_properties():
     assert not r.ok
     assert not r.is_client_error
     assert r.is_server_error
+
+
+def test_raise_for_status_ok_is_noop():
+    HTTPResponse(200, {}, {}, {}, None).raise_for_status()
+
+
+def test_raise_for_status_client_error():
+    response = HTTPResponse(404, {}, {}, {}, None)
+    with pytest.raises(ClientError) as exc:
+        response.raise_for_status()
+    assert exc.value.response is response
+
+
+def test_raise_for_status_server_error():
+    response = HTTPResponse(500, {}, {}, {}, None)
+    with pytest.raises(ServerError) as exc:
+        response.raise_for_status()
+    assert exc.value.response is response

@@ -34,6 +34,10 @@ class FormMarker(Marker):
     name = "form"
 
 
+class RawMarker(Marker):
+    name = "raw"
+
+
 _MarkerValueT = TypeVar("_MarkerValueT")
 
 Path = Annotated[_MarkerValueT, PathMarker()]
@@ -42,3 +46,4 @@ Body = Annotated[_MarkerValueT, BodyMarker()]
 Header = Annotated[_MarkerValueT, HeaderMarker()]
 File = Annotated[_MarkerValueT, FileMarker()]
 Form = Annotated[_MarkerValueT, FormMarker()]
+Raw = Annotated[_MarkerValueT, RawMarker()]

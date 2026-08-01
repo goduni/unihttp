@@ -1,6 +1,4 @@
-from typing import Any
-
-from unihttp.method import BaseMethod
+from unihttp.method import RequestMethod
 
 from adaptix import Provider, bound
 from adaptix._internal.morphing.name_layout.component import (
@@ -28,11 +26,11 @@ class _MethodProvider(BuiltinNameLayoutProvider):
 
 
 def method_provider(
-    method_tp: type[BaseMethod[Any]] | None = None,
+    method_tp: type[RequestMethod] | None = None,
     marker_path_maker: MarkerFieldPathMaker | None = None,
 ) -> Provider:
     if method_tp is None:
-        method_tp = BaseMethod
+        method_tp = RequestMethod
 
     if marker_path_maker is None:
         marker_path_maker = DefaultMarkerFieldPathMaker()

@@ -15,6 +15,7 @@ class HTTPRequest:
         body: Dictionary of body parameters (JSON/Form).
         file: Dictionary of files to upload.
         form: Dictionary of form_data parameters.
+        raw: Raw request body as bytes or string.
     """
 
     url: str
@@ -26,3 +27,4 @@ class HTTPRequest:
     body: Any
     file: dict[str, Any]
     form: Any
+    raw: bytes | str | None = None
