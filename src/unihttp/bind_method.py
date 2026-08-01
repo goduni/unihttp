@@ -1,7 +1,7 @@
 import functools
 import inspect
 from collections.abc import Awaitable, Callable, Sequence
-from typing import TYPE_CHECKING, Any, Generic, ParamSpec, TypeVar, overload
+from typing import TYPE_CHECKING, Any, Generic, ParamSpec, TypeVar, Union, overload
 
 from unihttp.http.response import HTTPResponse
 from unihttp.http.stream import AsyncChunkStream, ChunkStream
@@ -9,7 +9,7 @@ from unihttp.method import BaseMethod, StreamMethod
 
 if TYPE_CHECKING:
     from unihttp.clients.base import BaseAsyncClient, BaseSyncClient
-    from unihttp.middlewares.base import Middleware
+    from unihttp.middlewares.base import AsyncMiddleware, Middleware
 
 
 MethodParamSpec = ParamSpec("MethodParamSpec")
@@ -25,7 +25,7 @@ class MethodBinder(Generic[MethodParamSpec, SyncResultT, AsyncResultT]):  # noqa
         self,
         method_tp: Callable[MethodParamSpec, Any],
         call_name: str,
-        middleware: Sequence["Middleware"] | None = None,
+        middleware: Sequence[Union["Middleware", "AsyncMiddleware"]] | None = None,
     ) -> None:
         self._method_tp = method_tp
         self._call_name = call_name
@@ -93,19 +93,22 @@ class MethodBinder(Generic[MethodParamSpec, SyncResultT, AsyncResultT]):  # noqa
 @overload
 def bind_method(  # noqa: UP047
     method_tp: Callable[MethodParamSpec, BaseMethod[MethodResultT]],
+    middleware: Sequence[Union["Middleware", "AsyncMiddleware"]] | None = None,
 ) -> MethodBinder[MethodParamSpec, MethodResultT, MethodResultT]: ...
 
 
 @overload
 def bind_method(  # noqa: UP047
     method_tp: Callable[MethodParamSpec, StreamMethod],
+    middleware: Sequence[Union["Middleware", "AsyncMiddleware"]] | None = None,
 ) -> MethodBinder[
     MethodParamSpec, HTTPResponse[ChunkStream], HTTPResponse[AsyncChunkStream]
 ]: ...
 
 
 def bind_method(
-    method_tp: Callable[..., Any], middleware: Sequence["Middleware"] | None = None
+    method_tp: Callable[..., Any],
+    middleware: Sequence[Union["Middleware", "AsyncMiddleware"]] | None = None,
 ) -> Any:
     if isinstance(method_tp, type) and issubclass(method_tp, StreamMethod):
         return MethodBinder(method_tp, "call_method_stream", middleware=middleware)
