@@ -10,6 +10,8 @@
 
 **unihttp** is a modern library for creating declarative API clients.
 
+[Documentation](https://unihttp.readthedocs.io/en/latest/)
+
 ## Table of Contents
 
 - [Features](#features)
