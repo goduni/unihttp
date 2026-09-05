@@ -51,6 +51,7 @@ nav = [
 
 [project.theme]
 language = "en"
+custom_dir = "overrides"
 features = ["navigation.indexes", "navigation.path", "navigation.footer", "content.code.copy", "content.action.edit", "content.tabs.link"]
 
 [[project.theme.palette]]
