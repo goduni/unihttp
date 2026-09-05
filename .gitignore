@@ -143,8 +143,9 @@ venv.bak/
 # Rope project settings
 .ropeproject
 
-# mkdocs documentation
-/site
+# Generated documentation (sources live in /site)
+/.build/
+/graphify-out/
 
 # mypy
 .mypy_cache/

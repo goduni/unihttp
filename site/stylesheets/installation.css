@@ -1,0 +1,128 @@
+/* Installation keeps the documentation TOC and native, linked content tabs. */
+.md-typeset .uh-install h1 {
+  margin: .5rem 0 .8rem;
+  color: var(--md-default-fg-color);
+  font-size: clamp(1.8rem, 1.5rem + 1.5cqi, 2.2rem);
+  font-weight: 650;
+  letter-spacing: -.035em;
+  line-height: 1.15;
+}
+
+.md-typeset .uh-install h2 {
+  margin: 2rem 0 .8rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--uh-line);
+  font-size: 1.2rem;
+  font-weight: 600;
+  letter-spacing: -.02em;
+}
+
+.md-typeset .uh-install .uh-lead {
+  margin-bottom: .6rem;
+}
+
+.uh-install-requirements {
+  color: var(--uh-muted);
+  font-size: .75rem;
+}
+
+.md-typeset .uh-install-help {
+  margin-block: 1rem;
+  padding: 0;
+  border: 1px solid var(--uh-line);
+  border-radius: .25rem;
+  background: transparent;
+  box-shadow: none;
+  font-size: .8rem;
+}
+
+.md-typeset .uh-install-help > summary {
+  display: list-item;
+  margin: 0;
+  padding: .7rem .8rem;
+  min-height: 2.2rem;
+  border: 0;
+  background: transparent;
+  font-weight: 500;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.md-typeset .uh-install-help > summary::before,
+.md-typeset .uh-install-help > summary::after {
+  display: none;
+}
+
+.uh-install-help[open] > :not(summary) {
+  margin-inline: .8rem;
+}
+
+.uh-install summary:focus-visible,
+.uh-install a:focus-visible {
+  outline: 2px solid var(--uh-accent);
+  outline-offset: 2px;
+}
+
+.uh-install-picker {
+  margin-top: 1.5rem;
+}
+
+.md-typeset .uh-install-label {
+  margin: 1rem 0 .25rem;
+  color: var(--uh-muted);
+  font-size: .7rem;
+  font-weight: 600;
+}
+
+.md-typeset .uh-install-mode {
+  margin: .75rem 0 1rem;
+  color: var(--uh-accent);
+  font-size: .75rem;
+}
+
+.uh-install-picker .tabbed-set {
+  min-width: 0;
+}
+
+.md-typeset .uh-install-note {
+  margin-top: 1.2rem;
+  color: var(--uh-muted);
+  font-size: .75rem;
+  line-height: 1.7;
+}
+
+.uh-install-next {
+  display: grid;
+  gap: .8rem;
+  margin-block: 1.2rem;
+}
+
+.md-typeset .uh-install-next p {
+  margin: 0;
+}
+
+.md-typeset .uh-install-next a {
+  display: block;
+  padding-block: .5rem;
+  color: var(--uh-accent);
+  text-decoration: none;
+}
+
+.uh-install-next a:hover strong {
+  text-decoration: underline;
+  text-underline-offset: .2em;
+}
+
+.uh-install-next span {
+  display: block;
+  margin-top: .35rem;
+  color: var(--uh-muted);
+  font-size: .75rem;
+}
+
+@container (min-width: 28rem) {
+  .uh-install-next {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.5rem;
+  }
+}

@@ -92,3 +92,9 @@ external = ["WPS"]
 
 [lint.pydocstyle]
 convention = "google"
+
+[lint.per-file-ignores]
+# These files are embedded in the docs: keep lint directives out of examples.
+# Omitted() is a singleton; UserNotFound is the documented exception name.
+"examples/optional_fields.py" = ["RUF009"]
+"examples/recipes.py" = ["RUF009", "N818"]

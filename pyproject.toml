@@ -37,6 +37,7 @@ classifiers = [
 [project.urls]
 Homepage = "https://github.com/goduni/unihttp"
 Repository = "https://github.com/goduni/unihttp"
+Documentation = "https://unihttp.readthedocs.io/en/latest/"
 Issues = "https://github.com/goduni/unihttp/issues"
 
 [project.optional-dependencies]
@@ -52,6 +53,15 @@ msgspec = ["msgspec>=0.18.0"]
 
 
 [dependency-groups]
+docs = [
+    "zensical==0.0.59",
+    "mkdocstrings-python==2.0.8",
+    "beautifulsoup4>=4.12,<5",
+    "markdownify>=1.2,<2",
+    "orjson>=3.10,<4",
+    "unihttp[httpx,adaptix,pydantic,msgspec]",
+]
+
 optionals = [
     "unihttp[httpx]",
     "unihttp[httpx2]",
