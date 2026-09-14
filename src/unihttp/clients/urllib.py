@@ -4,12 +4,18 @@ import urllib.error
 import urllib.request
 import uuid
 from collections.abc import Callable
+from contextlib import closing
 from http.cookies import SimpleCookie
 from typing import Any
 from urllib.parse import urlencode, urljoin
 
 from unihttp.clients.base import BaseSyncClient
-from unihttp.exceptions import NetworkError, RequestTimeoutError
+from unihttp.clients.errors import ErrorMap, translate_errors
+from unihttp.exceptions import (
+    NetworkError,
+    NonRetryableError,
+    RequestTimeoutError,
+)
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
@@ -19,6 +25,14 @@ from unihttp.serialize import RequestDumper, ResponseLoader
 
 _UrllibResponse = http.client.HTTPResponse | urllib.error.HTTPError
 
+# Timeout first: TimeoutError is also an OSError.
+_ERROR_MAP: ErrorMap = {
+    RequestTimeoutError: TimeoutError,
+    # ValueError: malformed URL or header, raised before any I/O.
+    NonRetryableError: (ValueError, http.client.InvalidURL),
+    NetworkError: (OSError, http.client.HTTPException),
+}
+
 
 class _UrllibChunkStream(ChunkStream):
     def __init__(self, raw: _UrllibResponse, chunk_size: int) -> None:
@@ -27,12 +41,11 @@ class _UrllibChunkStream(ChunkStream):
         self._chunk_size = chunk_size
 
     def _fetch_chunk(self) -> bytes:
-        try:
+        with translate_errors(_ERROR_MAP):
             chunk = self._raw.read(self._chunk_size)
-        except TimeoutError as e:
-            raise RequestTimeoutError(str(e)) from e
-        except (OSError, http.client.HTTPException) as e:
-            raise NetworkError(str(e)) from e
+            # read(amt) returns b"" on a body cut short instead of raising.
+            if not chunk and self._raw.length:
+                raise http.client.IncompleteRead(b"", self._raw.length)
         if not chunk:
             raise StopIteration
         return chunk
@@ -170,36 +183,29 @@ class UrllibSyncClient(BaseSyncClient):
         headers = dict(request.header)
         body = self._prepare_body(request, headers)
 
-        req = urllib.request.Request(  # noqa: S310  # base_url is developer-controlled
-            url=self._build_url(request),
-            data=body,
-            headers=headers,
-            method=request.method,
-        )
-
-        try:
-            return self._opener.open(req, timeout=self._timeout)
-        except urllib.error.HTTPError as e:
-            # HTTPError is itself a valid response object for non-2xx statuses.
-            return e
-        except urllib.error.URLError as e:
-            if isinstance(e.reason, TimeoutError):
-                raise RequestTimeoutError(str(e)) from e
-            raise NetworkError(str(e)) from e
-        except TimeoutError as e:
-            raise RequestTimeoutError(str(e)) from e
+        with translate_errors(_ERROR_MAP):
+            req = urllib.request.Request(  # noqa: S310  # base_url is developer-controlled
+                url=self._build_url(request),
+                data=body,
+                headers=headers,
+                method=request.method,
+            )
+            try:
+                return self._opener.open(req, timeout=self._timeout)
+            except urllib.error.HTTPError as e:
+                # HTTPError is itself a valid response object for non-2xx statuses.
+                return e
+            except urllib.error.URLError as e:
+                # The real cause is in `reason`: an OSError, or a string for bad input.
+                if isinstance(e.reason, OSError):
+                    raise e.reason from None
+                raise ValueError(e.reason) from None
 
     def make_request(self, request: HTTPRequest) -> HTTPResponse:
         raw = self._do_request(request)
 
-        try:
+        with closing(raw), translate_errors(_ERROR_MAP):
             content = raw.read()
-        except TimeoutError as e:
-            raw.close()
-            raise RequestTimeoutError(str(e)) from e
-        except (OSError, http.client.HTTPException) as e:
-            raw.close()
-            raise NetworkError(str(e)) from e
 
         response_data: Any = None
         if content:

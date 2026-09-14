@@ -5,17 +5,43 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
 
+import h11
 import zapros
 from zapros import AsyncClient, Client, Multipart, Part
 
 from unihttp.clients.base import BaseAsyncClient, BaseSyncClient
-from unihttp.exceptions import NetworkError, RequestTimeoutError
+from unihttp.clients.errors import ErrorMap, translate_errors
+from unihttp.exceptions import (
+    NetworkError,
+    NonRetryableError,
+    RequestTimeoutError,
+    UniHTTPError,
+)
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
 from unihttp.http.stream import AsyncChunkStream, ChunkStream
 from unihttp.middlewares.base import AsyncMiddleware, Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
+
+# zapros lets h11 errors and URL/port ValueErrors through unwrapped.
+_ERROR_MAP: ErrorMap = {
+    RequestTimeoutError: zapros.TimeoutError,
+    NonRetryableError: (
+        zapros.DecodingError,
+        zapros.TooManyRedirectsError,
+        h11.LocalProtocolError,
+        ValueError,
+    ),
+    # Explicit: status and misuse errors must fall through to plain UniHTTPError.
+    NetworkError: (
+        zapros.ConnectionError,
+        zapros.ReadError,
+        zapros.WriteError,
+        h11.RemoteProtocolError,
+    ),
+    UniHTTPError: zapros.ZaprosError,
+}
 
 
 class _ZaprosChunkStream(ChunkStream):
@@ -25,12 +51,8 @@ class _ZaprosChunkStream(ChunkStream):
         self._stack = stack
 
     def _fetch_chunk(self) -> bytes:
-        try:
+        with translate_errors(_ERROR_MAP):
             return next(self._iter)
-        except zapros.TimeoutError as e:
-            raise RequestTimeoutError(str(e)) from e
-        except zapros.ConnectionError as e:
-            raise NetworkError(str(e)) from e
 
     def _close_response(self) -> None:
         self._stack.close()
@@ -45,12 +67,8 @@ class _ZaprosAsyncChunkStream(AsyncChunkStream):
         self._stack = stack
 
     async def _fetch_chunk(self) -> bytes:
-        try:
+        with translate_errors(_ERROR_MAP):
             return await anext(self._iter)
-        except zapros.TimeoutError as e:
-            raise RequestTimeoutError(str(e)) from e
-        except zapros.ConnectionError as e:
-            raise NetworkError(str(e)) from e
 
     async def _close_response(self) -> None:
         await self._stack.aclose()
@@ -198,7 +216,7 @@ class ZaprosSyncClient(BaseSyncClient):
     def make_request(self, request: HTTPRequest) -> HTTPResponse:
         body, form, multipart = self._build_payload(request)
 
-        try:
+        with translate_errors(_ERROR_MAP):
             response = self._session.request(  # type: ignore[call-overload]
                 method=request.method,
                 url=urljoin(self.base_url, request.url),
@@ -208,12 +226,7 @@ class ZaprosSyncClient(BaseSyncClient):
                 body=body,
                 multipart=multipart,
             )
-        except zapros.TimeoutError as e:
-            raise RequestTimeoutError(str(e)) from e
-        except zapros.ConnectionError as e:
-            raise NetworkError(str(e)) from e
-
-        content = response.read()
+            content = response.read()
 
         response_data: Any = None
         if content:
@@ -246,12 +259,8 @@ class ZaprosSyncClient(BaseSyncClient):
         )
 
         stack = ExitStack()
-        try:
+        with translate_errors(_ERROR_MAP):
             response = stack.enter_context(stream_cm)
-        except zapros.TimeoutError as e:
-            raise RequestTimeoutError(str(e)) from e
-        except zapros.ConnectionError as e:
-            raise NetworkError(str(e)) from e
 
         return HTTPResponse(
             status_code=response.status,
@@ -320,7 +329,7 @@ class ZaprosAsyncClient(BaseAsyncClient):
     async def make_request(self, request: HTTPRequest) -> HTTPResponse:
         body, form, multipart = self._build_payload(request)
 
-        try:
+        with translate_errors(_ERROR_MAP):
             response = await self._session.request(  # type: ignore[call-overload]
                 method=request.method,
                 url=urljoin(self.base_url, request.url),
@@ -330,12 +339,7 @@ class ZaprosAsyncClient(BaseAsyncClient):
                 body=body,
                 multipart=multipart,
             )
-        except zapros.TimeoutError as e:
-            raise RequestTimeoutError(str(e)) from e
-        except zapros.ConnectionError as e:
-            raise NetworkError(str(e)) from e
-
-        content = await response.aread()
+            content = await response.aread()
 
         response_data: Any = None
         if content:
@@ -368,12 +372,8 @@ class ZaprosAsyncClient(BaseAsyncClient):
         )
 
         stack = AsyncExitStack()
-        try:
+        with translate_errors(_ERROR_MAP):
             response = await stack.enter_async_context(stream_cm)
-        except zapros.TimeoutError as e:
-            raise RequestTimeoutError(str(e)) from e
-        except zapros.ConnectionError as e:
-            raise NetworkError(str(e)) from e
 
         return HTTPResponse(
             status_code=response.status,

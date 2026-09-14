@@ -7,13 +7,33 @@ import httpx
 from httpx import AsyncClient, Client, Response
 
 from unihttp.clients.base import BaseAsyncClient, BaseSyncClient
-from unihttp.exceptions import NetworkError, RequestTimeoutError
+from unihttp.clients.errors import ErrorMap, translate_errors
+from unihttp.exceptions import (
+    NetworkError,
+    NonRetryableError,
+    RequestTimeoutError,
+    UniHTTPError,
+)
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
 from unihttp.http.stream import AsyncChunkStream, ChunkStream
 from unihttp.middlewares.base import AsyncMiddleware, Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
+
+# Timeout first: TimeoutException is also a RequestError.
+_ERROR_MAP: ErrorMap = {
+    RequestTimeoutError: httpx.TimeoutException,
+    NonRetryableError: (
+        httpx.InvalidURL,
+        httpx.UnsupportedProtocol,
+        httpx.LocalProtocolError,
+        httpx.TooManyRedirects,
+        httpx.DecodingError,
+    ),
+    NetworkError: httpx.RequestError,
+    UniHTTPError: httpx.HTTPError,
+}
 
 
 class _HTTPXChunkStream(ChunkStream):
@@ -23,12 +43,8 @@ class _HTTPXChunkStream(ChunkStream):
         self._iter = response.iter_bytes(chunk_size)
 
     def _fetch_chunk(self) -> bytes:
-        try:
+        with translate_errors(_ERROR_MAP):
             return next(self._iter)
-        except httpx.NetworkError as e:
-            raise NetworkError(str(e)) from e
-        except httpx.TimeoutException as e:
-            raise RequestTimeoutError(str(e)) from e
 
     def _close_response(self) -> None:
         self._response.close()
@@ -43,12 +59,8 @@ class _HTTPXAsyncChunkStream(AsyncChunkStream):
         self._iter = response.aiter_bytes(chunk_size)
 
     async def _fetch_chunk(self) -> bytes:
-        try:
+        with translate_errors(_ERROR_MAP):
             return await anext(self._iter)
-        except httpx.NetworkError as e:
-            raise NetworkError(str(e)) from e
-        except httpx.TimeoutException as e:
-            raise RequestTimeoutError(str(e)) from e
 
     async def _close_response(self) -> None:
         await self._response.aclose()
@@ -111,7 +123,7 @@ class HTTPXSyncClient(BaseSyncClient):
     def _do_request(self, request: HTTPRequest, *, stream: bool) -> Response:
         content = self._build_content(request)
 
-        try:
+        with translate_errors(_ERROR_MAP):
             files = self._convert_files(request.file) if request.file else None
             built_request = self._session.build_request(
                 method=request.method,
@@ -123,10 +135,6 @@ class HTTPXSyncClient(BaseSyncClient):
                 data=request.form,
             )
             return self._session.send(built_request, stream=stream)
-        except httpx.NetworkError as e:
-            raise NetworkError(str(e)) from e
-        except httpx.TimeoutException as e:
-            raise RequestTimeoutError(str(e)) from e
 
     def make_request(self, request: HTTPRequest) -> HTTPResponse:
         response = self._do_request(request, stream=False)
@@ -220,7 +228,7 @@ class HTTPXAsyncClient(BaseAsyncClient):
     async def _do_request(self, request: HTTPRequest, *, stream: bool) -> Response:
         content = self._build_content(request)
 
-        try:
+        with translate_errors(_ERROR_MAP):
             files = self._convert_files(request.file) if request.file else None
             built_request = self._session.build_request(
                 method=request.method,
@@ -232,10 +240,6 @@ class HTTPXAsyncClient(BaseAsyncClient):
                 data=request.form,
             )
             return await self._session.send(built_request, stream=stream)
-        except httpx.NetworkError as e:
-            raise NetworkError(str(e)) from e
-        except httpx.TimeoutException as e:
-            raise RequestTimeoutError(str(e)) from e
 
     async def make_request(self, request: HTTPRequest) -> HTTPResponse:
         response = await self._do_request(request, stream=False)

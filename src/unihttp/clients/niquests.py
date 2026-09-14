@@ -7,13 +7,43 @@ import niquests
 from niquests import AsyncResponse, AsyncSession, Response, Session
 
 from unihttp.clients.base import BaseAsyncClient, BaseSyncClient
-from unihttp.exceptions import NetworkError, RequestTimeoutError
+from unihttp.clients.errors import ErrorMap, translate_errors
+from unihttp.exceptions import (
+    NetworkError,
+    NonRetryableError,
+    RequestTimeoutError,
+    UniHTTPError,
+)
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
 from unihttp.http.stream import AsyncChunkStream, ChunkStream
 from unihttp.middlewares.base import AsyncMiddleware, Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
+
+# Timeout first: ConnectTimeout is also a ConnectionError.
+_ERROR_MAP: ErrorMap = {
+    RequestTimeoutError: niquests.exceptions.Timeout,
+    NonRetryableError: (
+        niquests.exceptions.MissingSchema,
+        niquests.exceptions.InvalidSchema,
+        niquests.exceptions.InvalidURL,
+        niquests.exceptions.InvalidHeader,
+        niquests.exceptions.InvalidJSONError,
+        niquests.exceptions.URLRequired,
+        niquests.exceptions.TooManyRedirects,
+        niquests.exceptions.ContentDecodingError,
+        niquests.exceptions.UnrewindableBodyError,
+    ),
+    # Explicit: status and misuse errors must fall through to plain UniHTTPError.
+    NetworkError: (
+        niquests.exceptions.ConnectionError,
+        niquests.exceptions.ChunkedEncodingError,
+        niquests.exceptions.RetryError,
+        niquests.exceptions.MultiplexingError,
+    ),
+    UniHTTPError: niquests.exceptions.RequestException,
+}
 
 
 class _NiquestsChunkStream(ChunkStream):
@@ -23,14 +53,8 @@ class _NiquestsChunkStream(ChunkStream):
         self._iter = response.iter_content(chunk_size=chunk_size)
 
     def _fetch_chunk(self) -> bytes:
-        try:
+        with translate_errors(_ERROR_MAP):
             return next(self._iter)
-        except niquests.exceptions.ConnectionError as e:
-            raise NetworkError(str(e)) from e
-        except niquests.exceptions.Timeout as e:
-            raise RequestTimeoutError(str(e)) from e
-        except niquests.exceptions.RequestException as e:
-            raise NetworkError(str(e)) from e
 
     def _close_response(self) -> None:
         self._response.close()
@@ -50,14 +74,8 @@ class _NiquestsAsyncChunkStream(AsyncChunkStream):
         self._iter = chunk_iter
 
     async def _fetch_chunk(self) -> bytes:
-        try:
+        with translate_errors(_ERROR_MAP):
             return await anext(self._iter)
-        except niquests.exceptions.ConnectionError as e:
-            raise NetworkError(str(e)) from e
-        except niquests.exceptions.Timeout as e:
-            raise RequestTimeoutError(str(e)) from e
-        except niquests.exceptions.RequestException as e:
-            raise NetworkError(str(e)) from e
 
     async def _close_response(self) -> None:
         await self._response.close()
@@ -131,7 +149,7 @@ class NiquestsSyncClient(BaseSyncClient):
     def _do_request(self, request: HTTPRequest, *, stream: bool) -> Response:
         content = self._build_content(request)
 
-        try:
+        with translate_errors(_ERROR_MAP):
             files = self._convert_files(request.file) if request.file else None
             return self._session.request(
                 method=request.method,
@@ -142,12 +160,6 @@ class NiquestsSyncClient(BaseSyncClient):
                 data=content,
                 stream=stream,
             )
-        except niquests.exceptions.ConnectionError as e:
-            raise NetworkError(str(e)) from e
-        except niquests.exceptions.Timeout as e:
-            raise RequestTimeoutError(str(e)) from e
-        except niquests.exceptions.RequestException as e:
-            raise NetworkError(str(e)) from e
 
     def make_request(self, request: HTTPRequest) -> HTTPResponse:
         response = self._do_request(request, stream=False)
@@ -259,7 +271,7 @@ class NiquestsAsyncClient(BaseAsyncClient):
         content = self._build_content(request)
         files = self._convert_files(request.file) if request.file else None
 
-        try:
+        with translate_errors(_ERROR_MAP):
             if stream:
                 return await self._session.request(
                     method=request.method,
@@ -279,12 +291,6 @@ class NiquestsAsyncClient(BaseAsyncClient):
                 data=content,
                 stream=False,
             )
-        except niquests.exceptions.ConnectionError as e:
-            raise NetworkError(str(e)) from e
-        except niquests.exceptions.Timeout as e:
-            raise RequestTimeoutError(str(e)) from e
-        except niquests.exceptions.RequestException as e:
-            raise NetworkError(str(e)) from e
 
     async def make_request(self, request: HTTPRequest) -> HTTPResponse:
         response = await self._do_request(request, stream=False)
