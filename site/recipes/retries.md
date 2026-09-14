@@ -79,7 +79,8 @@ The default is three retries, or four attempts total.
 By default, status retries cover `500`, `502`, `503`, and `504`. Pass a non-empty
 `status_codes` list to choose another set. Exceptions are not retried unless
 included in `exceptions`; the example opts into `NetworkError` and
-`RequestTimeoutError`.
+`RequestTimeoutError`. Do not add `NonRetryableError`, which fails the same way
+on every attempt, or the base `UniHTTPError`, which also covers it.
 
 The delay before retry number `attempt + 1` is `backoff * 2**attempt`, starting
 at `attempt = 0`. Here the base delays are 0.5 and 1 second. With `jitter=True`,

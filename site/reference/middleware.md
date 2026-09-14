@@ -7,7 +7,7 @@ description: Middleware handlers, retry and status-mapping configuration, loggin
 
 Sync `Handler` and async `AsyncHandler` are callable aliases exported by `unihttp.middlewares`. Match the middleware variant to the client. See [middleware ordering](../guides/middleware.md) and [retry behavior](../recipes/retries.md).
 
-`HTTPStatusError` exposes `response` and `status_code`. Status errors require explicit handling; default response hooks do not raise automatically. Network exception normalization depends on the transport.
+`HTTPStatusError` exposes `response` and `status_code`. Status errors require explicit handling; default response hooks do not raise automatically. Every client backend translates its own exceptions into `NetworkError`, `RequestTimeoutError`, `NonRetryableError`, or plain `UniHTTPError`, keeping the original as `__cause__`.
 
 ::: unihttp.middlewares.base.Middleware
 
