@@ -24,7 +24,9 @@ from unihttp.serialize import RequestDumper, ResponseLoader
 # Timeout first: TimeoutException is also a RequestError.
 _ERROR_MAP: ErrorMap = {
     RequestTimeoutError: httpx.TimeoutException,
+    # ValueError: a base_url that urljoin rejects.
     NonRetryableError: (
+        ValueError,
         httpx.InvalidURL,
         httpx.UnsupportedProtocol,
         httpx.LocalProtocolError,
@@ -32,7 +34,8 @@ _ERROR_MAP: ErrorMap = {
         httpx.DecodingError,
     ),
     NetworkError: httpx.RequestError,
-    UniHTTPError: httpx.HTTPError,
+    # StreamError and CookieConflict are misuse errors outside HTTPError.
+    UniHTTPError: (httpx.HTTPError, httpx.StreamError, httpx.CookieConflict),
 }
 
 

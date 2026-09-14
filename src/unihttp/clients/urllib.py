@@ -15,6 +15,7 @@ from unihttp.exceptions import (
     NetworkError,
     NonRetryableError,
     RequestTimeoutError,
+    UniHTTPError,
 )
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
@@ -28,9 +29,11 @@ _UrllibResponse = http.client.HTTPResponse | urllib.error.HTTPError
 # Timeout first: TimeoutError is also an OSError.
 _ERROR_MAP: ErrorMap = {
     RequestTimeoutError: TimeoutError,
+    # Before ValueError: a certificate error is both an OSError and a ValueError.
+    NetworkError: (OSError, http.client.IncompleteRead, http.client.BadStatusLine),
     # ValueError: malformed URL or header, raised before any I/O.
     NonRetryableError: (ValueError, http.client.InvalidURL),
-    NetworkError: (OSError, http.client.HTTPException),
+    UniHTTPError: http.client.HTTPException,
 }
 
 

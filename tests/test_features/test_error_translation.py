@@ -1,4 +1,5 @@
 import http.client
+import ssl
 import urllib.error
 from contextlib import AsyncExitStack, ExitStack, contextmanager
 from types import SimpleNamespace
@@ -235,6 +236,8 @@ HTTPX_CASES = pytest.mark.parametrize(
         ("TooManyRedirects", NonRetryableError),
         ("DecodingError", NonRetryableError),
         ("HTTPStatusError", UniHTTPError),
+        ("StreamConsumed", UniHTTPError),
+        ("CookieConflict", UniHTTPError),
     ],
     ids=case_id,
 )
@@ -249,6 +252,8 @@ HTTPX_STREAM_CASES = pytest.mark.parametrize(
 def make_httpx_error(module, name):
     if name == "HTTPStatusError":
         return module.HTTPStatusError("x", request=MagicMock(), response=MagicMock())
+    if name == "StreamConsumed":
+        return module.StreamConsumed()
     return getattr(module, name)("x")
 
 
@@ -481,11 +486,14 @@ async def test_aiohttp_stream_error():
         (urllib.error.URLError(TimeoutError("x")), RequestTimeoutError),
         (urllib.error.URLError(ConnectionRefusedError("x")), NetworkError),
         (urllib.error.URLError("unknown url type: ftp"), NonRetryableError),
+        # Also a ValueError: the network entry must win.
+        (urllib.error.URLError(ssl.SSLCertVerificationError(1, "x")), NetworkError),
         # getresponse() raises these without wrapping them in URLError.
         (TimeoutError("x"), RequestTimeoutError),
         (http.client.RemoteDisconnected("x"), NetworkError),
         (http.client.BadStatusLine("x"), NetworkError),
         (http.client.InvalidURL("x"), NonRetryableError),
+        (http.client.LineTooLong("x"), UniHTTPError),
     ],
     ids=lambda v: repr(v) if isinstance(v, BaseException) else case_id(v),
 )
@@ -520,3 +528,42 @@ def test_urllib_read_interrupted_closes_response():
     with pytest.raises(KeyboardInterrupt):
         make_client(UrllibSyncClient, opener=opener).make_request(http_request())
     response.close.assert_called_once()
+
+
+# urljoin rejects this base_url before any backend code runs.
+BAD_BASE_URL = "http://[::1/"
+
+
+@pytest.mark.parametrize(
+    "client_cls",
+    [
+        RequestsSyncClient,
+        NiquestsSyncClient,
+        HTTPXSyncClient,
+        HTTPX2SyncClient,
+        ZaprosSyncClient,
+        UrllibSyncClient,
+    ],
+    ids=case_id,
+)
+def test_invalid_base_url(client_cls):
+    with make_client(client_cls, base_url=BAD_BASE_URL) as client:
+        with raises_exactly(NonRetryableError):
+            client.make_request(http_request())
+
+
+@pytest.mark.parametrize(
+    "client_cls",
+    [
+        NiquestsAsyncClient,
+        HTTPXAsyncClient,
+        HTTPX2AsyncClient,
+        ZaprosAsyncClient,
+        AiohttpAsyncClient,
+    ],
+    ids=case_id,
+)
+async def test_async_invalid_base_url(client_cls):
+    async with make_client(client_cls, base_url=BAD_BASE_URL) as client:
+        with raises_exactly(NonRetryableError):
+            await client.make_request(http_request())

@@ -21,7 +21,9 @@ from unihttp.serialize import RequestDumper, ResponseLoader
 # Timeout first: ConnectTimeout is also a ConnectionError.
 _ERROR_MAP: ErrorMap = {
     RequestTimeoutError: requests.exceptions.Timeout,
+    # ValueError: a base_url that urljoin rejects.
     NonRetryableError: (
+        ValueError,
         requests.exceptions.MissingSchema,
         requests.exceptions.InvalidSchema,
         requests.exceptions.InvalidURL,
