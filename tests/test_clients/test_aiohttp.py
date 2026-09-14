@@ -12,6 +12,22 @@ def mock_session():
     return MagicMock(spec=aiohttp.ClientSession)
 
 
+class FakeContent:
+    """`ClientResponse.content` whose iter_chunked yields the items; exceptions are raised."""
+
+    def __init__(self, *items):
+        self._items = items
+
+    def iter_chunked(self, chunk_size):
+        async def gen():
+            for item in self._items:
+                if isinstance(item, BaseException):
+                    raise item
+                yield item
+
+        return gen()
+
+
 @pytest.mark.asyncio
 async def test_aiohttp_make_request(mock_request_dumper, mock_response_loader, mock_session):
     client = AiohttpAsyncClient(
@@ -272,18 +288,11 @@ async def test_aiohttp_raw_body(mock_request_dumper, mock_response_loader, mock_
 
 @pytest.mark.asyncio
 async def test_aiohttp_stream_make_request(mock_request_dumper, mock_response_loader, mock_session):
-    class _FakeContent:
-        def iter_chunked(self, chunk_size):
-            async def gen():
-                yield b"a"
-                yield b"b"
-            return gen()
-
     response = MagicMock()
     response.status = 200
     response.headers = {}
     response.cookies = {}
-    response.content = _FakeContent()
+    response.content = FakeContent(b"a", b"b")
     response.close = MagicMock()
     mock_session.request = AsyncMock(return_value=response)
 
@@ -304,15 +313,8 @@ async def test_aiohttp_stream_make_request(mock_request_dumper, mock_response_lo
 
 @pytest.mark.asyncio
 async def test_aiohttp_chunk_stream_closes_without_ever_reading():
-    class _FakeContent:
-        def iter_chunked(self, chunk_size):
-            async def gen():
-                yield b"a"
-                yield b"b"
-            return gen()
-
     response = MagicMock()
-    response.content = _FakeContent()
+    response.content = FakeContent(b"a", b"b")
     response.close = MagicMock()
 
     stream = _AiohttpChunkStream(response, chunk_size=999)
@@ -329,15 +331,8 @@ async def test_aiohttp_chunk_stream_closes_without_ever_reading():
 
 @pytest.mark.asyncio
 async def test_aiohttp_chunk_stream_early_break_closes_once():
-    class _FakeContent:
-        def iter_chunked(self, chunk_size):
-            async def gen():
-                yield b"a"
-                yield b"b"
-            return gen()
-
     response = MagicMock()
-    response.content = _FakeContent()
+    response.content = FakeContent(b"a", b"b")
     response.close = MagicMock()
 
     stream = _AiohttpChunkStream(response, chunk_size=999)
@@ -351,15 +346,8 @@ async def test_aiohttp_chunk_stream_early_break_closes_once():
 
 @pytest.mark.asyncio
 async def test_aiohttp_chunk_stream_mid_stream_connection_error_translated():
-    class _FakeContent:
-        def iter_chunked(self, chunk_size):
-            async def gen():
-                yield b"a"
-                raise aiohttp.ClientConnectionError("connection lost")
-            return gen()
-
     response = MagicMock()
-    response.content = _FakeContent()
+    response.content = FakeContent(b"a", aiohttp.ClientConnectionError("connection lost"))
 
     stream = _AiohttpChunkStream(response, chunk_size=999)
     assert await anext(stream) == b"a"
@@ -369,15 +357,8 @@ async def test_aiohttp_chunk_stream_mid_stream_connection_error_translated():
 
 @pytest.mark.asyncio
 async def test_aiohttp_chunk_stream_mid_stream_timeout_translated():
-    class _FakeContent:
-        def iter_chunked(self, chunk_size):
-            async def gen():
-                yield b"a"
-                raise TimeoutError("timed out")
-            return gen()
-
     response = MagicMock()
-    response.content = _FakeContent()
+    response.content = FakeContent(b"a", TimeoutError("timed out"))
 
     stream = _AiohttpChunkStream(response, chunk_size=999)
     assert await anext(stream) == b"a"

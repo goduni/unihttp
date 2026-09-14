@@ -50,7 +50,7 @@ def make_client(client_cls, base_url, dumper, loader):
     return client_cls(base_url=base_url, request_dumper=dumper, response_loader=loader)
 
 
-class _StreamHandler(BaseHTTPRequestHandler):
+class StreamHandler(BaseHTTPRequestHandler):
     """Mirrors tests/server.py's /stream/{total_bytes}: writes `total_bytes`
     in 4096-byte pieces, misaligned with CHUNK_SIZE on purpose."""
 
@@ -76,7 +76,7 @@ class _StreamHandler(BaseHTTPRequestHandler):
 
 @pytest.fixture
 def threaded_server():
-    server = ThreadingHTTPServer(("127.0.0.1", 0), _StreamHandler)
+    server = ThreadingHTTPServer(("127.0.0.1", 0), StreamHandler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
 

@@ -19,7 +19,7 @@ from unihttp.exceptions import NetworkError, RequestTimeoutError
 from unihttp.http import HTTPRequest, UploadFile
 
 
-class _FakeStreamCM:
+class FakeStreamCM:
     """Real `__enter__`/`__exit__` methods, not `Mock`-assigned ones.
 
     `ExitStack.enter_context` looks up `type(cm).__exit__` (to match `with`
@@ -40,8 +40,8 @@ class _FakeStreamCM:
         self.exit_calls.append(exc_info)
 
 
-class _FakeAsyncStreamCM:
-    """Async counterpart of `_FakeStreamCM` — see its docstring."""
+class FakeAsyncStreamCM:
+    """Async counterpart of `FakeStreamCM` — see its docstring."""
 
     def __init__(self, response):
         self._response = response
@@ -123,7 +123,7 @@ class TestStringifyPairs:
         assert _stringify_pairs({}) == []
 
 
-def _mock_response(*, status: int = 200, content: bytes = b"{}") -> Mock:
+def make_response(*, status: int = 200, content: bytes = b"{}") -> Mock:
     response = Mock(spec=zapros.Response)
     response.status = status
     response.headers = {}
@@ -156,7 +156,7 @@ async def async_client(mock_request_dumper, mock_response_loader) -> AsyncGenera
 
 class TestZaprosSyncClient:
     def test_make_request(self, sync_client: BaseSyncClient, mocker):
-        mock_response = _mock_response(content=b'{"key": "value"}')
+        mock_response = make_response(content=b'{"key": "value"}')
         mock_request = mocker.patch("zapros.Client.request", return_value=mock_response)
 
         client = cast(ZaprosSyncClient, sync_client)
@@ -186,7 +186,7 @@ class TestZaprosSyncClient:
         )
 
     def test_request_with_body(self, sync_client: BaseSyncClient, mocker):
-        mock_request = mocker.patch("zapros.Client.request", return_value=_mock_response())
+        mock_request = mocker.patch("zapros.Client.request", return_value=make_response())
 
         client = cast(ZaprosSyncClient, sync_client)
         request = HTTPRequest(
@@ -202,7 +202,7 @@ class TestZaprosSyncClient:
         assert request.header["Content-Type"] == "application/json"
 
     def test_request_with_form(self, sync_client: BaseSyncClient, mocker):
-        mock_request = mocker.patch("zapros.Client.request", return_value=_mock_response())
+        mock_request = mocker.patch("zapros.Client.request", return_value=make_response())
 
         client = cast(ZaprosSyncClient, sync_client)
         request = HTTPRequest(
@@ -218,7 +218,7 @@ class TestZaprosSyncClient:
 
     def test_form_coerces_non_string_values(self, sync_client: BaseSyncClient, mocker):
         """Form values get the same coercion as query (bool/int/None/list)."""
-        mock_request = mocker.patch("zapros.Client.request", return_value=_mock_response())
+        mock_request = mocker.patch("zapros.Client.request", return_value=make_response())
         client = cast(ZaprosSyncClient, sync_client)
 
         request = HTTPRequest(
@@ -237,7 +237,7 @@ class TestZaprosSyncClient:
         ]
 
     def test_query_coerces_non_string_values(self, sync_client: BaseSyncClient, mocker):
-        mock_request = mocker.patch("zapros.Client.request", return_value=_mock_response())
+        mock_request = mocker.patch("zapros.Client.request", return_value=make_response())
         client = cast(ZaprosSyncClient, sync_client)
 
         request = HTTPRequest(
@@ -257,7 +257,7 @@ class TestZaprosSyncClient:
         ]
 
     def test_request_with_files_builds_multipart(self, sync_client: BaseSyncClient, mocker):
-        mock_request = mocker.patch("zapros.Client.request", return_value=_mock_response())
+        mock_request = mocker.patch("zapros.Client.request", return_value=make_response())
         client = cast(ZaprosSyncClient, sync_client)
 
         request = HTTPRequest(
@@ -308,7 +308,7 @@ class TestZaprosSyncClient:
 
     def test_file_part_variants(self, sync_client: BaseSyncClient, mocker):
         """Cover BinaryIO read-path and raw-bytes value path in `_add_file_part`."""
-        mock_request = mocker.patch("zapros.Client.request", return_value=_mock_response())
+        mock_request = mocker.patch("zapros.Client.request", return_value=make_response())
         client = cast(ZaprosSyncClient, sync_client)
 
         request = HTTPRequest(
@@ -330,7 +330,7 @@ class TestZaprosSyncClient:
     def test_non_json_response_kept_as_bytes(self, sync_client: BaseSyncClient, mocker):
         mocker.patch(
             "zapros.Client.request",
-            return_value=_mock_response(content=b"<html>not json</html>"),
+            return_value=make_response(content=b"<html>not json</html>"),
         )
         client = cast(ZaprosSyncClient, sync_client)
 
@@ -344,7 +344,7 @@ class TestZaprosSyncClient:
 
     def test_empty_body_with_file_does_not_error(self, sync_client: BaseSyncClient, mocker):
         """Dumper defaults `body` to `{}` — that must not preempt file uploads."""
-        mock_request = mocker.patch("zapros.Client.request", return_value=_mock_response())
+        mock_request = mocker.patch("zapros.Client.request", return_value=make_response())
         client = cast(ZaprosSyncClient, sync_client)
 
         request = HTTPRequest(
@@ -400,7 +400,7 @@ class TestZaprosSyncClient:
         client.close()
 
     def test_raw_body(self, sync_client: BaseSyncClient, mocker):
-        mock_request = mocker.patch("zapros.Client.request", return_value=_mock_response())
+        mock_request = mocker.patch("zapros.Client.request", return_value=make_response())
 
         client = cast(ZaprosSyncClient, sync_client)
         request = HTTPRequest(
@@ -417,7 +417,7 @@ class TestZaprosSyncClient:
         response.headers = {}
         response.iter_bytes.return_value = iter([b"a", b"b"])
 
-        stream_cm = _FakeStreamCM(response)
+        stream_cm = FakeStreamCM(response)
         mocker.patch("zapros.Client.stream", return_value=stream_cm)
 
         client = cast(ZaprosSyncClient, sync_client)
@@ -494,7 +494,7 @@ class TestZaprosSyncClient:
 class TestZaprosAsyncClient:
     @pytest.mark.asyncio
     async def test_make_request(self, async_client: BaseAsyncClient, mocker):
-        mock_response = _mock_response(content=b'{"key": "value"}')
+        mock_response = make_response(content=b'{"key": "value"}')
         mock_request = mocker.patch(
             "zapros.AsyncClient.request",
             new_callable=AsyncMock,
@@ -527,7 +527,7 @@ class TestZaprosAsyncClient:
         mock_request = mocker.patch(
             "zapros.AsyncClient.request",
             new_callable=AsyncMock,
-            return_value=_mock_response(),
+            return_value=make_response(),
         )
         client = cast(ZaprosAsyncClient, async_client)
 
@@ -544,7 +544,7 @@ class TestZaprosAsyncClient:
         mock_request = mocker.patch(
             "zapros.AsyncClient.request",
             new_callable=AsyncMock,
-            return_value=_mock_response(),
+            return_value=make_response(),
         )
         client = cast(ZaprosAsyncClient, async_client)
 
@@ -573,7 +573,7 @@ class TestZaprosAsyncClient:
         mocker.patch(
             "zapros.AsyncClient.request",
             new_callable=AsyncMock,
-            return_value=_mock_response(content=b"<html>not json</html>"),
+            return_value=make_response(content=b"<html>not json</html>"),
         )
         client = cast(ZaprosAsyncClient, async_client)
 
@@ -618,7 +618,7 @@ class TestZaprosAsyncClient:
     @pytest.mark.asyncio
     async def test_raw_body(self, async_client: BaseAsyncClient, mocker):
         mock_request = mocker.patch(
-            "zapros.AsyncClient.request", new_callable=AsyncMock, return_value=_mock_response()
+            "zapros.AsyncClient.request", new_callable=AsyncMock, return_value=make_response()
         )
 
         client = cast(ZaprosAsyncClient, async_client)
@@ -659,7 +659,7 @@ class TestZaprosAsyncClient:
         response.headers = {}
         response.async_iter_bytes.return_value = gen()
 
-        stream_cm = _FakeAsyncStreamCM(response)
+        stream_cm = FakeAsyncStreamCM(response)
         mocker.patch("zapros.AsyncClient.stream", return_value=stream_cm)
 
         client = cast(ZaprosAsyncClient, async_client)

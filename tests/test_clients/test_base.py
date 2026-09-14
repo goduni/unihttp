@@ -14,7 +14,7 @@ class SimpleMethod(BaseMethod[str]):
     __method__ = "GET"
 
 
-class _FakeStreamMethod(StreamMethod):
+class FakeStreamMethod(StreamMethod):
     __url__ = "/files/{id}"
     __method__ = "GET"
 
@@ -61,7 +61,7 @@ class AsyncAuth(AsyncMiddleware):
         return await next_handler(request)
 
 
-class _GenChunkStream(ChunkStream):
+class GenChunkStream(ChunkStream):
     """Test double wiring a plain generator into the ChunkStream contract."""
 
     def __init__(self, gen, on_close):
@@ -87,7 +87,7 @@ class StreamClient(BaseSyncClient):
 
         self.closed = False
         self.last_request = request
-        return HTTPResponse(200, {}, _GenChunkStream(gen(), lambda: setattr(self, "closed", True)), {}, None)
+        return HTTPResponse(200, {}, GenChunkStream(gen(), lambda: setattr(self, "closed", True)), {}, None)
 
 class TestSyncClient:
     class MockClient(BaseSyncClient):
@@ -165,7 +165,7 @@ class TestSyncClient:
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
         chunks = []
-        with client.call_method_stream(_FakeStreamMethod()).data as stream:
+        with client.call_method_stream(FakeStreamMethod()).data as stream:
             for chunk in stream:
                 chunks.append(chunk)
 
@@ -176,7 +176,7 @@ class TestSyncClient:
         client = StreamClient("http://base", mock_request_dumper, mock_response_loader)
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
-        with client.call_method_stream(_FakeStreamMethod()).data as stream:
+        with client.call_method_stream(FakeStreamMethod()).data as stream:
             for _chunk in stream:
                 break
 
@@ -185,18 +185,18 @@ class TestSyncClient:
     def test_call_method_stream_status_not_ok_calls_on_error(self, mock_request_dumper, mock_response_loader):
         calls = []
 
-        class _StreamMethodWithOnError(StreamMethod):
+        class StreamMethodWithOnError(StreamMethod):
             __url__ = "/files/{id}"
             __method__ = "GET"
 
             def on_error(self, response):
                 calls.append(response.status_code)
 
-        class _ErrorClient(StreamClient):
+        class ErrorClient(StreamClient):
             def stream_make_request(self, request, chunk_size=65536):
                 self.closed = False
                 return HTTPResponse(
-                    404, {}, _GenChunkStream(iter(()), lambda: setattr(self, "closed", True)), {}, None
+                    404, {}, GenChunkStream(iter(()), lambda: setattr(self, "closed", True)), {}, None
                 )
 
             def handle_error(self, response, method):
@@ -206,11 +206,11 @@ class TestSyncClient:
                 # started.
                 raise RuntimeError(f"HTTP {response.status_code}")
 
-        client = _ErrorClient("http://base", mock_request_dumper, mock_response_loader)
+        client = ErrorClient("http://base", mock_request_dumper, mock_response_loader)
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
         with pytest.raises(RuntimeError):
-            with client.call_method_stream(_StreamMethodWithOnError()).data as stream:
+            with client.call_method_stream(StreamMethodWithOnError()).data as stream:
                 list(stream)
 
         assert calls == [404]
@@ -222,12 +222,12 @@ class TestSyncClient:
         order = []
         seen = []
 
-        class _Client(self.MockClient):
+        class FakeClient(self.MockClient):
             def make_request(self, request):
                 seen.append(request.header.get("Auth"))
                 return HTTPResponse(200, {}, {}, {}, None)
 
-        client = _Client(
+        client = FakeClient(
             "http://base", mock_request_dumper, mock_response_loader,
             middleware=[Tag(order, "client")],
         )
@@ -251,7 +251,7 @@ class TestSyncClient:
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
         with client.call_method_stream(
-            _FakeStreamMethod(), middleware=[Tag(order, "A")]
+            FakeStreamMethod(), middleware=[Tag(order, "A")]
         ).data as stream:
             list(stream)
 
@@ -304,7 +304,7 @@ class TestAsyncClient:
 
         assert order == ["mw1_req", "mw2_req", "mw2_resp", "mw1_resp"]
 
-    class _AsyncGenChunkStream(AsyncChunkStream):
+    class AsyncGenChunkStream(AsyncChunkStream):
         """Test double wiring a plain async generator into the AsyncChunkStream contract."""
 
         def __init__(self, gen, on_close):
@@ -330,7 +330,7 @@ class TestAsyncClient:
             self.closed = False
             self.last_request = request
             return HTTPResponse(
-                200, {}, TestAsyncClient._AsyncGenChunkStream(gen(), lambda: setattr(self, "closed", True)), {}, None
+                200, {}, TestAsyncClient.AsyncGenChunkStream(gen(), lambda: setattr(self, "closed", True)), {}, None
             )
 
     async def test_call_method_stream_full_consumption(self, mock_request_dumper, mock_response_loader):
@@ -338,7 +338,7 @@ class TestAsyncClient:
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
         chunks = []
-        async with (await client.call_method_stream(_FakeStreamMethod())).data as stream:
+        async with (await client.call_method_stream(FakeStreamMethod())).data as stream:
             async for chunk in stream:
                 chunks.append(chunk)
 
@@ -349,7 +349,7 @@ class TestAsyncClient:
         client = self.StreamClient("http://base", mock_request_dumper, mock_response_loader)
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
-        async with (await client.call_method_stream(_FakeStreamMethod())).data as stream:
+        async with (await client.call_method_stream(FakeStreamMethod())).data as stream:
             async for _chunk in stream:
                 break
 
@@ -358,7 +358,7 @@ class TestAsyncClient:
     async def test_call_method_stream_status_not_ok_calls_on_error(self, mock_request_dumper, mock_response_loader):
         calls = []
 
-        class _StreamMethodWithOnError(StreamMethod):
+        class StreamMethodWithOnError(StreamMethod):
             __url__ = "/files/{id}"
             __method__ = "GET"
 
@@ -369,12 +369,12 @@ class TestAsyncClient:
             return
             yield  # pragma: no cover - makes this an async generator
 
-        class _ErrorClient(self.StreamClient):
+        class ErrorClient(self.StreamClient):
             async def stream_make_request(self, request, chunk_size=65536):
                 self.closed = False
                 return HTTPResponse(
                     404, {},
-                    TestAsyncClient._AsyncGenChunkStream(empty_gen(), lambda: setattr(self, "closed", True)),
+                    TestAsyncClient.AsyncGenChunkStream(empty_gen(), lambda: setattr(self, "closed", True)),
                     {}, None,
                 )
 
@@ -385,11 +385,11 @@ class TestAsyncClient:
                 # iterator having started.
                 raise RuntimeError(f"HTTP {response.status_code}")
 
-        client = _ErrorClient("http://base", mock_request_dumper, mock_response_loader)
+        client = ErrorClient("http://base", mock_request_dumper, mock_response_loader)
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
         with pytest.raises(RuntimeError):
-            async with (await client.call_method_stream(_StreamMethodWithOnError())).data as stream:
+            async with (await client.call_method_stream(StreamMethodWithOnError())).data as stream:
                 async for _chunk in stream:
                     pass
 
@@ -403,7 +403,7 @@ class TestAsyncClient:
         hooks = []
         seen = []
 
-        class _Client(self.MockClient):
+        class FakeClient(self.MockClient):
             async def make_request(self, request):
                 seen.append(request.header.get("Auth"))
                 return HTTPResponse(200, {}, {}, {}, None)
@@ -411,7 +411,7 @@ class TestAsyncClient:
             def validate_response(self, response, method):
                 hooks.append("validate")
 
-        client = _Client(
+        client = FakeClient(
             "http://base", mock_request_dumper, mock_response_loader,
             middleware=[AsyncTag(order, "client")],
         )
@@ -440,7 +440,7 @@ class TestAsyncClient:
         mock_request_dumper.dump.return_value = {"path": {"id": "1"}}
 
         async with (await client.call_method_stream(
-            _FakeStreamMethod(), middleware=[AsyncTag(order, "A")]
+            FakeStreamMethod(), middleware=[AsyncTag(order, "A")]
         )).data as stream:
             async for _chunk in stream:
                 pass
