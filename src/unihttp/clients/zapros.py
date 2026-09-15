@@ -248,18 +248,17 @@ class ZaprosSyncClient(BaseSyncClient):
     ) -> HTTPResponse[ChunkStream]:
         body, form, multipart = self._build_payload(request)
 
-        stream_cm = self._session.stream(  # type: ignore[call-overload]
-            method=request.method,
-            url=urljoin(self.base_url, request.url),
-            headers=request.header,
-            params=_stringify_pairs(request.query),
-            form=form,
-            body=body,
-            multipart=multipart,
-        )
-
         stack = ExitStack()
         with translate_errors(_ERROR_MAP):
+            stream_cm = self._session.stream(  # type: ignore[call-overload]
+                method=request.method,
+                url=urljoin(self.base_url, request.url),
+                headers=request.header,
+                params=_stringify_pairs(request.query),
+                form=form,
+                body=body,
+                multipart=multipart,
+            )
             response = stack.enter_context(stream_cm)
 
         return HTTPResponse(
@@ -361,18 +360,17 @@ class ZaprosAsyncClient(BaseAsyncClient):
     ) -> HTTPResponse[AsyncChunkStream]:
         body, form, multipart = self._build_payload(request)
 
-        stream_cm = self._session.stream(  # type: ignore[call-overload]
-            method=request.method,
-            url=urljoin(self.base_url, request.url),
-            headers=request.header,
-            params=_stringify_pairs(request.query),
-            form=form,
-            body=body,
-            multipart=multipart,
-        )
-
         stack = AsyncExitStack()
         with translate_errors(_ERROR_MAP):
+            stream_cm = self._session.stream(  # type: ignore[call-overload]
+                method=request.method,
+                url=urljoin(self.base_url, request.url),
+                headers=request.header,
+                params=_stringify_pairs(request.query),
+                form=form,
+                body=body,
+                multipart=multipart,
+            )
             response = await stack.enter_async_context(stream_cm)
 
         return HTTPResponse(

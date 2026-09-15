@@ -550,6 +550,8 @@ def test_invalid_base_url(client_cls):
     with make_client(client_cls, base_url=BAD_BASE_URL) as client:
         with raises_exactly(NonRetryableError):
             client.make_request(http_request())
+        with raises_exactly(NonRetryableError):
+            client.stream_make_request(http_request())
 
 
 @pytest.mark.parametrize(
@@ -567,3 +569,5 @@ async def test_async_invalid_base_url(client_cls):
     async with make_client(client_cls, base_url=BAD_BASE_URL) as client:
         with raises_exactly(NonRetryableError):
             await client.make_request(http_request())
+        with raises_exactly(NonRetryableError):
+            await client.stream_make_request(http_request())
