@@ -1,4 +1,4 @@
-from typing import Any, ClassVar, TypeAlias, TypeVar
+from typing import Any, ClassVar, Self, TypeAlias, TypeVar
 
 
 class SingletonMeta(type):
@@ -16,6 +16,15 @@ class Omitted(metaclass=SingletonMeta):
 
     def __bool__(self) -> bool:
         return False
+
+    def __copy__(self) -> Self:
+        return self
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> Self:
+        return self
+
+    def __reduce__(self) -> tuple[type[Self], tuple[()]]:
+        return (type(self), ())
 
 
 T = TypeVar("T")
