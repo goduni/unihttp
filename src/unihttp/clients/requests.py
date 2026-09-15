@@ -5,12 +5,43 @@ import requests
 from requests import Response, Session
 
 from unihttp.clients.base import BaseSyncClient
-from unihttp.exceptions import NetworkError, RequestTimeoutError
+from unihttp.clients.errors import ErrorMap, translate_errors
+from unihttp.exceptions import (
+    NetworkError,
+    NonRetryableError,
+    RequestTimeoutError,
+    UniHTTPError,
+)
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
 from unihttp.http.stream import ChunkStream
 from unihttp.middlewares.base import Middleware
 from unihttp.serialize import RequestDumper, ResponseLoader
+
+# Timeout first: ConnectTimeout is also a ConnectionError.
+_ERROR_MAP: ErrorMap = {
+    RequestTimeoutError: requests.exceptions.Timeout,
+    # ValueError: a base_url that urljoin rejects.
+    NonRetryableError: (
+        ValueError,
+        requests.exceptions.MissingSchema,
+        requests.exceptions.InvalidSchema,
+        requests.exceptions.InvalidURL,
+        requests.exceptions.InvalidHeader,
+        requests.exceptions.InvalidJSONError,
+        requests.exceptions.URLRequired,
+        requests.exceptions.TooManyRedirects,
+        requests.exceptions.ContentDecodingError,
+        requests.exceptions.UnrewindableBodyError,
+    ),
+    # Explicit: status and misuse errors must fall through to plain UniHTTPError.
+    NetworkError: (
+        requests.exceptions.ConnectionError,
+        requests.exceptions.ChunkedEncodingError,
+        requests.exceptions.RetryError,
+    ),
+    UniHTTPError: requests.exceptions.RequestException,
+}
 
 
 class _RequestsChunkStream(ChunkStream):
@@ -20,12 +51,8 @@ class _RequestsChunkStream(ChunkStream):
         self._iter = response.iter_content(chunk_size=chunk_size)
 
     def _fetch_chunk(self) -> bytes:
-        try:
+        with translate_errors(_ERROR_MAP):
             return next(self._iter)
-        except requests.exceptions.ConnectionError as e:
-            raise NetworkError(str(e)) from e
-        except requests.exceptions.Timeout as e:
-            raise RequestTimeoutError(str(e)) from e
 
     def _close_response(self) -> None:
         self._response.close()
@@ -68,7 +95,7 @@ class RequestsSyncClient(BaseSyncClient):
     def _do_request(self, request: HTTPRequest, *, stream: bool) -> Response:
         content = self._build_content(request)
 
-        try:
+        with translate_errors(_ERROR_MAP):
             return self._session.request(
                 method=request.method,
                 url=urljoin(self.base_url, request.url),
@@ -78,10 +105,6 @@ class RequestsSyncClient(BaseSyncClient):
                 data=content,
                 stream=stream,
             )
-        except requests.exceptions.ConnectionError as e:
-            raise NetworkError(str(e)) from e
-        except requests.exceptions.Timeout as e:
-            raise RequestTimeoutError(str(e)) from e
 
     def make_request(self, request: HTTPRequest) -> HTTPResponse:
         response = self._do_request(request, stream=False)

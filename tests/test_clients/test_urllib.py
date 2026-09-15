@@ -32,6 +32,9 @@ class FakeResponse:
     def read(self):
         return self._body
 
+    def close(self):
+        pass
+
 
 @pytest.fixture
 def mock_opener():
@@ -90,7 +93,10 @@ def test_urllib_context_manager(mock_request_dumper, mock_response_loader, mock_
 
 def test_urllib_network_error(mock_request_dumper, mock_response_loader, mock_opener):
     client = make_client(mock_request_dumper, mock_response_loader, mock_opener)
-    mock_opener.open.side_effect = urllib.error.URLError("Connection refused")
+    # A string reason would be a NonRetryableError.
+    mock_opener.open.side_effect = urllib.error.URLError(
+        ConnectionRefusedError("Connection refused")
+    )
 
     request = HTTPRequest("/url", "GET", {}, {}, {}, {}, {}, {})
 
@@ -326,6 +332,7 @@ def test_urllib_stream_make_request(mock_request_dumper, mock_response_loader):
     fake_response.headers.items.return_value = []
     fake_response.headers.get_all.return_value = []
     fake_response.read.side_effect = [b"a", b"b", b""]
+    fake_response.length = 0
 
     opener = MagicMock()
     opener.open.return_value = fake_response
@@ -394,3 +401,44 @@ def test_urllib_chunk_stream_mid_stream_timeout_translated():
     assert next(stream) == b"a"
     with pytest.raises(RequestTimeoutError):
         next(stream)
+
+
+def read_stream(base_url, method="GET"):
+    client = UrllibSyncClient(base_url, MagicMock(), MagicMock(), timeout=5)
+    request = HTTPRequest("/", method, {}, {}, {}, {}, {}, {})
+    with client.stream_make_request(request, chunk_size=4).data as stream:
+        return b"".join(stream)
+
+
+def test_urllib_real_stream_raises_on_truncated_body(raw_server):
+    base_url = raw_server(headers=["Content-Length: 100"], body=b"x" * 10)
+
+    with pytest.raises(NetworkError):
+        read_stream(base_url)
+
+
+def test_urllib_real_stream_raises_on_truncated_error_body(raw_server):
+    # A 4xx response comes back as urllib.error.HTTPError, not HTTPResponse.
+    base_url = raw_server("404 Not Found", headers=["Content-Length: 100"], body=b"x" * 10)
+
+    with pytest.raises(NetworkError):
+        read_stream(base_url)
+
+
+def test_urllib_real_stream_reads_full_body(raw_server):
+    base_url = raw_server(headers=["Content-Length: 10"], body=b"x" * 10)
+
+    assert read_stream(base_url) == b"x" * 10
+
+
+def test_urllib_real_stream_reads_body_without_content_length(raw_server):
+    base_url = raw_server(headers=["Connection: close"], body=b"x" * 10)
+
+    assert read_stream(base_url) == b"x" * 10
+
+
+def test_urllib_real_stream_head_is_not_truncation(raw_server):
+    # HEAD carries Content-Length but never a body.
+    base_url = raw_server(headers=["Content-Length: 100"])
+
+    assert read_stream(base_url, method="HEAD") == b""

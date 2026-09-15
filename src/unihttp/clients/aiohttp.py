@@ -7,13 +7,38 @@ import aiohttp
 from aiohttp import ClientResponse, ClientSession, FormData
 
 from unihttp.clients.base import BaseAsyncClient
-from unihttp.exceptions import NetworkError, RequestTimeoutError
+from unihttp.clients.errors import ErrorMap, translate_errors
+from unihttp.exceptions import (
+    NetworkError,
+    NonRetryableError,
+    RequestTimeoutError,
+    UniHTTPError,
+)
 from unihttp.http import UploadFile
 from unihttp.http.request import HTTPRequest
 from unihttp.http.response import HTTPResponse
 from unihttp.http.stream import AsyncChunkStream
 from unihttp.middlewares.base import AsyncMiddleware
 from unihttp.serialize import RequestDumper, ResponseLoader
+
+# Timeout first: ServerTimeoutError is also a ClientConnectionError.
+_ERROR_MAP: ErrorMap = {
+    RequestTimeoutError: TimeoutError,
+    # Explicit: status and misuse errors must fall through to plain UniHTTPError.
+    NetworkError: (
+        aiohttp.ClientConnectionError,
+        aiohttp.ClientPayloadError,
+        aiohttp.ClientHttpProxyError,
+    ),
+    # After NetworkError: a certificate error is also a ValueError.
+    # ValueError: aiohttp raises it bare for forbidden characters in headers.
+    NonRetryableError: (
+        ValueError,
+        aiohttp.NonHttpUrlClientError,
+        aiohttp.TooManyRedirects,
+    ),
+    UniHTTPError: aiohttp.ClientError,
+}
 
 
 class _AiohttpChunkStream(AsyncChunkStream):
@@ -23,12 +48,8 @@ class _AiohttpChunkStream(AsyncChunkStream):
         self._iter = response.content.iter_chunked(chunk_size)
 
     async def _fetch_chunk(self) -> bytes:
-        try:
+        with translate_errors(_ERROR_MAP):
             return await anext(self._iter)
-        except aiohttp.ClientConnectionError as e:
-            raise NetworkError(str(e)) from e
-        except TimeoutError as e:
-            raise RequestTimeoutError(str(e)) from e
 
     async def _close_response(self) -> None:
         self._response.close()
@@ -105,7 +126,7 @@ class AiohttpAsyncClient(BaseAsyncClient):
     async def _do_request(self, request: HTTPRequest) -> ClientResponse:
         data = self._build_data(request)
 
-        try:
+        with translate_errors(_ERROR_MAP):
             return await self._session.request(
                 method=request.method,
                 url=urljoin(self.base_url, request.url),
@@ -113,23 +134,17 @@ class AiohttpAsyncClient(BaseAsyncClient):
                 params=request.query,
                 data=data,
             )
-        except aiohttp.ClientConnectionError as e:
-            raise NetworkError(str(e)) from e
-        except TimeoutError as e:
-            raise RequestTimeoutError(str(e)) from e
 
     async def make_request(self, request: HTTPRequest) -> HTTPResponse:
         response = await self._do_request(request)
 
         response_data: Any = None
         try:
-            content = await response.read()
-        except aiohttp.ClientConnectionError as e:
+            with translate_errors(_ERROR_MAP):
+                content = await response.read()
+        except UniHTTPError:
             response.close()
-            raise NetworkError(str(e)) from e
-        except TimeoutError as e:
-            response.close()
-            raise RequestTimeoutError(str(e)) from e
+            raise
         if content:
             try:
                 response_data = self.json_loads(content)

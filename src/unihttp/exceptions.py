@@ -21,6 +21,10 @@ class RequestTimeoutError(UniHTTPError):
     """Request timed out."""
 
 
+class NonRetryableError(UniHTTPError):
+    """Deterministic failure (bad URL, redirect loop, ...) — retrying won't help."""
+
+
 # Application errors (HTTP status based)
 class HTTPStatusError(UniHTTPError):
     """Raised for HTTP error responses."""

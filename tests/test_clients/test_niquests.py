@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, Mock
 from unihttp.clients.base import BaseSyncClient, BaseAsyncClient
 from unihttp.clients.niquests import NiquestsSyncClient, NiquestsAsyncClient, _NiquestsChunkStream, \
     _NiquestsAsyncChunkStream
-from unihttp.exceptions import NetworkError, RequestTimeoutError
+from unihttp.exceptions import NetworkError, RequestTimeoutError, UniHTTPError
 from unihttp.http import HTTPRequest
 from unihttp.serialize import RequestDumper, ResponseLoader
 
@@ -180,8 +180,9 @@ class TestNiquestsSyncClient:
         request = HTTPRequest(
             url="/path", method="GET", header={}, path={}, query={}, body=None, file={}, form=None
         )
-        with pytest.raises(NetworkError, match="Generic Error"):
+        with pytest.raises(UniHTTPError, match="Generic Error") as info:
             client.make_request(request)
+        assert type(info.value) is UniHTTPError
 
     def test_raw_body(self, sync_client: BaseSyncClient, mocker):
         mock_response = Mock(status_code=200, headers={}, cookies={}, content=b"{}")
@@ -402,8 +403,9 @@ class TestNiquestsAsyncClient:
         request = HTTPRequest(
             url="/path", method="GET", header={}, path={}, query={}, body=None, file={}, form=None
         )
-        with pytest.raises(NetworkError, match="Generic Error"):
+        with pytest.raises(UniHTTPError, match="Generic Error") as info:
             await client.make_request(request)
+        assert type(info.value) is UniHTTPError
 
     @pytest.mark.asyncio
     async def test_stream_make_request(self, async_client: BaseAsyncClient, mocker):

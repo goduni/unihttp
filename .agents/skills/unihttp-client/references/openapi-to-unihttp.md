@@ -143,7 +143,9 @@ Prefer a single auth middleware (`AsyncMiddleware` for async clients,
 - If the API has a structured error body, model it as a dataclass and raise a
   typed exception carrying it.
 - Reuse the built-in exceptions where they fit:
-  `unihttp.exceptions.{ClientError, ServerError, HTTPStatusError, NetworkError, RequestTimeoutError}`.
+  `unihttp.exceptions.{ClientError, ServerError, HTTPStatusError, NetworkError, RequestTimeoutError, NonRetryableError, UniHTTPError}`.
+- Retry only `NetworkError` and `RequestTimeoutError`; `NonRetryableError` fails
+  the same way on every attempt.
 
 ## Pagination
 

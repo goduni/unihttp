@@ -85,6 +85,10 @@ For the helpers above, catch around the entire `download_checksum(...)` call
 - `HTTPStatusError` covers rejected statuses, including the `ClientError` and
   `ServerError` subclasses raised by this method.
 - `NetworkError` and `RequestTimeoutError` can occur while opening or reading.
+  A body cut short by the server raises `NetworkError`; the stream does not
+  just end early.
+- `NonRetryableError` means the request cannot succeed as sent, for example an
+  unsupported URL scheme.
 - Exceptions from your own consumer also propagate; the stream context still
   closes the response.
 
