@@ -132,7 +132,7 @@ This is the most concise way to define your client. You simply bind the methods 
 ```python
 from unihttp.bind_method import bind_method
 from unihttp.clients.httpx import HTTPXSyncClient
-from unihttp.serializers.adaptix import DEFAULT_RETORT
+from unihttp.serializers.adaptix import DEFAULT_RETORT, AdaptixDumper, AdaptixLoader
 
 
 class UserClient(HTTPXSyncClient):
@@ -142,8 +142,8 @@ class UserClient(HTTPXSyncClient):
 
 client = UserClient(
     base_url="https://api.example.com",
-    request_dumper=DEFAULT_RETORT,
-    response_loader=DEFAULT_RETORT
+    request_dumper=AdaptixDumper(DEFAULT_RETORT),
+    response_loader=AdaptixLoader(DEFAULT_RETORT),
 )
 user = client.get_user(id=123)
 ```
@@ -283,34 +283,73 @@ class UserClient(HTTPXSyncClient):
 
 ## Error Handling
 
-`unihttp` offers a layered approach to error handling, giving you control at multiple levels.
+`unihttp` does not raise HTTP status errors automatically. Configure a status
+mapper or response hook before loading an error body into your result model.
 
 Every `HTTPResponse` has a `raise_for_status()` method that raises `ClientError` (4xx) or `ServerError` (5xx),
-each carrying the original `response`:
+each carrying the original `response`. `call_method` returns your declared model;
+use middleware or a response hook to inspect the HTTP response. For example, add
+a status mapper when constructing the client:
 
 ```python
-response = client.call_method(GetUser(id=123))
-response.raise_for_status()
+from unihttp.exceptions import ClientError, ServerError
+from unihttp.middlewares import SyncErrorMapperMiddleware
+
+client = UserClient(
+    base_url="https://api.example.com",
+    request_dumper=AdaptixDumper(DEFAULT_RETORT),
+    response_loader=AdaptixLoader(DEFAULT_RETORT),
+    middleware=[SyncErrorMapperMiddleware({
+        range(400, 500): ClientError,
+        range(500, 600): ServerError,
+    })],
+)
 ```
+
+Backends translate request and response-reading failures into
+`unihttp.exceptions.NetworkError`, `RequestTimeoutError`, `NonRetryableError`,
+or plain `UniHTTPError`, preserving the original exception as `__cause__`.
+`NonRetryableError` covers failures such as invalid URLs and redirect loops.
+For transport retries, opt into `NetworkError` and `RequestTimeoutError`; adding
+`UniHTTPError` would also retry deterministic failures. A request on a closed
+client may still raise the backend's `RuntimeError`.
+
+See [error handling](https://unihttp.readthedocs.io/en/latest/guides/errors/)
+and [retries](https://unihttp.readthedocs.io/en/latest/recipes/retries/) for
+sync/async examples and middleware ordering.
 
 ### 1. Method-Level Handling
 
 Override `on_error` in your Method class to handle specific status codes for that endpoint.
 
 ```python
+from unihttp.http.response import HTTPResponse
+
+
+class UserNotFound(Exception):
+    pass
+
+
 @dataclass
 class GetUser(BaseMethod[User]):
-    # ...
-    def on_error(self, response):
+    __url__ = "/users/{id}"
+    __method__ = "GET"
+
+    id: Path[int]
+    compact: Query[bool] = False
+
+    def on_error(self, response: HTTPResponse) -> None:
         if response.status_code == 404:
-            return None  # Return None (or a default object) instead of raising
-        return super().on_error(response)
+            raise UserNotFound(f"User {self.id} does not exist")
 ```
+
+The hook's return value is ignored. To return `None` for a missing user, catch
+`UserNotFound` around the client call or customize `make_response`.
 
 ### 2. Client-Level Handling
 
-Override `handle_error` in your Client class to catch errors that weren't handled by the method. This is great for
-global concerns like token expiration.
+Override `handle_error` in your Client class for shared status handling, such as
+token expiration. It runs after `method.on_error` if that hook has not raised.
 
 ```python
 class MyClient(HTTPXSyncClient):
@@ -341,9 +380,9 @@ Sometimes APIs return `200 OK` but the body contains an error message. You can o
 this.
 
 ```python
-# In your Method or Client
-def validate_response(self, response: HTTPResponse):
-    if "error" in response.data:
+# In your Method; the Client hook also takes a `method` argument.
+def validate_response(self, response: HTTPResponse) -> None:
+    if isinstance(response.data, dict) and "error" in response.data:
         raise ApiError(response.data["error"])
 ```
 
@@ -365,7 +404,7 @@ client = HTTPXSyncClient(
 
 ## Powered by Adaptix
 
-`unihttp` leverages [adaptix](https://github.com/reagento/adaptix) for all data serialization and validation tasks.
+`unihttp` supports [adaptix](https://github.com/reagento/adaptix) as an optional serialization and validation backend.
 `adaptix` is a powerful and extremely fast library that allows you to:
 
 First, install the optional dependency:
@@ -382,17 +421,16 @@ Crucially, you can customize serialization down to **individual fields in each m
 over how your data is processed.
 
 ```python
-from adaptix import Retort, name_mapping, P
+from adaptix import P, dumper, name_mapping
 from unihttp.serializers.adaptix import AdaptixDumper, AdaptixLoader, DEFAULT_RETORT
 
-# Create a Retort that renames specific fields (e.g., camelCase for external API)
-retort = Retort(
+# Extend the default retort to keep unihttp's marker and omission support.
+retort = DEFAULT_RETORT.extend(
     recipe=[
-        name_mapping(map={"user_name": "userName"}),
+        name_mapping(CreateUser, map={"name": "userName"}),
         dumper(P[CreateUser].email, lambda x: x.lower()),
     ]
 )
-retort.extend(DEFAULT_RETORT)
 
 client = UserClient(
     # ...

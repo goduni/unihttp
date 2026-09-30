@@ -25,6 +25,25 @@ release's package metadata rather than assuming the same Python requirements.
 HTTP backends and serializers are optional dependencies with their own version
 requirements.
 
+## Upgrading from 0.3.x to 0.4.0
+
+- **Backend exceptions:** error translation now covers more failures when
+  sending requests and reading buffered or streamed responses. Update handlers
+  that catch backend-specific exceptions to use the corresponding
+  `unihttp.exceptions` types. The original exception is available as `__cause__`;
+  exceptions outside each backend's mapping still propagate unchanged.
+- **Retry policy:** the new `NonRetryableError` identifies deterministic failures
+  such as invalid URLs and redirect loops. Opt into `NetworkError` and
+  `RequestTimeoutError` for transport retries. Avoid retrying the base
+  `UniHTTPError`, which also includes `NonRetryableError`. See
+  [error handling](../guides/errors.md) and [retries](../recipes/retries.md).
+- **Omitted values:** `copy.copy`, `copy.deepcopy`, and pickle round trips now
+  preserve the `Omitted()` singleton, including inside dataclasses. See
+  [copying and pickling](../recipes/partial-updates.md#copying-and-pickling).
+- **zapros:** the minimum supported version increased from `0.11.0` to `0.12.0`.
+  Update any dependency pins or lockfiles that still select an older version;
+  the `unihttp[zapros]` extra declares the new minimum.
+
 ## Upgrade checklist
 
 Before upgrading, read the release notes and check the client backend,
@@ -39,6 +58,7 @@ When checking your client code, pay particular attention to these contracts:
 - Returning a value from `on_error` does not replace the method's result.
 - Extend Adaptix using `DEFAULT_RETORT.extend(recipe=[...])`.
 
-These describe current behavior, not a list of changes introduced in a specific
-release. Version-specific changes belong to the linked release notes. See
+These checklist items describe existing contracts rather than changes introduced
+in 0.4.0. See the migration notes above and the linked release notes for
+version-specific changes. See
 [errors](../guides/errors.md) and [serialization](../guides/serialization.md) for examples.

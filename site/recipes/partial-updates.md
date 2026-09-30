@@ -26,6 +26,17 @@ key out. An empty string or zero is still a supplied value, not omission.
 Whether the server applies a default, clears a value, or rejects an absent or
 null field is part of the endpoint's contract, not determined by unihttp.
 
+## Copying and pickling
+
+Since unihttp 0.4.0, `Omitted()` keeps its singleton identity through
+`copy.copy`, `copy.deepcopy`, and a pickle round trip. Copied or restored
+method instances retain the same omission sentinel, so identity checks and
+dataclass equality continue to work.
+
+`dataclasses.asdict()` also preserves the sentinel because it deep-copies
+field values. It still includes the field with an `Omitted()` value; use a
+unihttp request dumper to leave that field out of the HTTP request.
+
 ## Optional query parameters and headers
 
 These examples share the following imports and response model:

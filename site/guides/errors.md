@@ -113,7 +113,7 @@ The error types describe different stages:
 | --- | --- |
 | Network failure or timeout | `NetworkError` or `RequestTimeoutError`; do not assume an HTTP response exists. |
 | Request that cannot succeed as sent, for example an unsupported URL scheme | `NonRetryableError`; fix the request instead of retrying. |
-| Any other failure inside the HTTP backend | Plain `UniHTTPError`. |
+| Other backend exceptions covered by the backend's error mapping | Plain `UniHTTPError`. |
 | Unsuccessful HTTP status | Exceptions configured by your mapper or error hooks. |
 | API error inside a successful HTTP response | Your own exception from `validate_response`, as below. |
 | Body does not match the declared result | The configured serializer's loading exception; this is not an HTTP status error. |
@@ -124,8 +124,10 @@ Every [client backend](../integrations/backends.md) translates failures of
 sending a request and reading its response into these types, so you do not need
 to catch backend exceptions for them. All inherit from `UniHTTPError`; the
 original is kept as `__cause__`. Rare edge cases can map differently between
-backends. Misuse is not translated: a request on a closed client raises the
-backend's own error, for example `RuntimeError`.
+backends. Exceptions outside the backend's error mapping propagate unchanged:
+for example, a request on a closed HTTPX client raises `RuntimeError`.
+Some misuse errors are mapped: HTTPX's `StreamConsumed` and `CookieConflict`
+become plain `UniHTTPError` when raised during a request or response read.
 
 Handle statuses with unihttp, not with the backend. If the backend session raises
 on error statuses itself (for example `aiohttp.ClientSession(raise_for_status=True)`),
