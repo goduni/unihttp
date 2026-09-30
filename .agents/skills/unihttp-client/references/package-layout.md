@@ -52,7 +52,7 @@ requires-python = ">=3.12"
 readme = "README.md"
 license = "MIT"
 dependencies = [
-    "unihttp[aiohttp,adaptix]>=0.2.9",
+    "unihttp[aiohttp,adaptix]>=0.4.0",
 ]
 
 [dependency-groups]
@@ -323,11 +323,16 @@ def test_get_pet_parses_response() -> None:
 ```
 
 `HTTPRequest` exposes these assertable buckets: `url`, `method`, `path`, `query`,
-`header`, `body`, `form`, `file` (note `header` and `file` are singular). Assert
+`header`, `body`, `form`, `file`, `raw` (note `header` and `file` are singular). Assert
 `request.query` for query params, `request.form` for form fields, and
 `request.file` for uploads — a `File[UploadFile]` field is **lowered to a
 `(filename, bytes, content_type)` tuple** there, e.g.
 `request.file == {"document": ("d.txt", b"...", "text/plain")}`.
+
+For `Raw` methods, assert `request.raw` contains the exact prebuilt bytes or
+string. Streaming methods use `StreamMethod` and have no `make_response`;
+test their status hooks and stream cleanup as described in the companion
+[streaming reference](../../unihttp/references/streaming.md).
 
 ### Optional: one full-pipeline test through a mocked transport
 

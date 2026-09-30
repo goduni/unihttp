@@ -4,7 +4,7 @@ Markers are `Annotated` aliases that tell the serializer where each field of a
 `BaseMethod` belongs in the HTTP request. Import them from `unihttp.markers`:
 
 ```python
-from unihttp.markers import Path, Query, Body, Header, Form, File
+from unihttp.markers import Path, Query, Body, Header, Form, File, Raw
 ```
 
 | Marker   | Wire location                                   | Typical type           |
@@ -15,6 +15,7 @@ from unihttp.markers import Path, Query, Body, Header, Form, File
 | `Header` | HTTP request header                             | `str`                  |
 | `Form`   | `application/x-www-form-urlencoded` body field  | scalars                |
 | `File`   | `multipart/form-data` file part                 | `FileType`/`UploadFile`|
+| `Raw`    | Complete prebuilt request body                  | `bytes`, `str`         |
 
 Each marker is `Annotated[T, <Marker>()]`, so `Path[int]` is a fully typed field.
 
@@ -25,9 +26,12 @@ Each marker is `Annotated[T, <Marker>()]`, so `Path[int]` is a fully typed field
 - **`Query` fields may have defaults** — `compact: Query[bool] = False`.
 - **`Body` is for JSON.** A whole dataclass can be one `Body` field, or several
   scalar `Body` fields are merged into one JSON object.
-- **`Body` is mutually exclusive with `Form`/`File`.** The aiohttp/requests
-  clients raise `ValueError` if you mix them. For multipart requests, send the
-  non-file fields as `Form`.
+- **`Body` is mutually exclusive with `Form`/`File`.** `build_http_request`
+  raises `ValueError` for conflicting populated payloads before reaching the
+  backend. For multipart requests, send the non-file fields as `Form`.
+- **`Raw` is mutually exclusive with `Body`/`Form`/`File`.** Use one raw field
+  with Adaptix or a custom dumper; Pydantic and msgspec dumpers currently ignore
+  it. Set `Content-Type` explicitly when the endpoint requires it.
 - **`Header` values are strings.**
 
 ## Files and `UploadFile`

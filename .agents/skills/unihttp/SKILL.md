@@ -7,7 +7,9 @@ description: Write the best unihttp client code possible with all the recommende
 
 `unihttp` is a library for building **declarative, type-safe API clients**. You
 define API endpoints as typed `BaseMethod` subclasses and bind them to a client
-backed by `httpx`, `aiohttp`, `requests`, `niquests`, or `zapros`.
+backed by `httpx`, `httpx2`, `aiohttp`, `requests`, `niquests`, `zapros`, or
+stdlib `urllib`. This guidance targets unihttp 0.4.0 and later; check the
+installed version before applying it to an older project.
 
 Here is a list of best practices for different parts of a unihttp client. For
 deeper reference material, see:
@@ -15,6 +17,7 @@ deeper reference material, see:
 - [references/markers.md](references/markers.md) — every marker and how it maps to the request
 - [references/serializers.md](references/serializers.md) — choosing and customizing adaptix / pydantic / msgspec
 - [references/backends.md](references/backends.md) — choosing an HTTP backend and sync vs async
+- [references/streaming.md](references/streaming.md) — downloads, stream cleanup, error hooks, and retry limits
 
 ## Imports
 
@@ -22,7 +25,7 @@ deeper reference material, see:
 
 The top-level `unihttp/__init__.py` is intentionally empty — it re-exports
 **nothing**. Importing names from `unihttp` directly raises `ImportError` at
-runtime, even though some README snippets show it.
+runtime.
 
 Wrong:
 
@@ -124,9 +127,11 @@ class GetUserPost(BaseMethod[Post]):
 ### Prefer `bind_method` for the common case
 
 `bind_method` is a descriptor that exposes the method on the client with the
-exact typed signature of its constructor — sync clients return the value, async
-clients return an awaitable. Reach for it whenever an endpoint needs no extra
-per-call logic.
+exact typed signature of its constructor. For `BaseMethod[T]`, sync clients
+return `T` and async clients return an awaitable of `T`. For `StreamMethod`, the
+result contains an open byte stream; follow the
+[streaming reference](references/streaming.md) for consumption and cleanup.
+Reach for binding whenever an endpoint needs no extra per-call logic.
 
 Wrong (hand-written passthrough that duplicates the signature and loses typing):
 
@@ -176,7 +181,11 @@ common mistakes:
 - Multipart file uploads -> `File` (wrap content in `UploadFile` to set filename
   and content type).
 - `Body` cannot be combined with `Form`/`File` on the same method — the clients
-  raise `ValueError`. Use `Form` for the scalar fields of a multipart request.
+  receive requests only after `build_http_request` checks for conflicting
+  payloads and raises `ValueError`. Use `Form` for multipart scalar fields.
+- Use `Raw[bytes]` or `Raw[str]` for a prebuilt request body, with Adaptix or a
+  custom dumper. Pydantic and msgspec dumpers do not currently handle `Raw`.
+  Do not combine it with `Body`, `Form`, or `File`.
 
 Wrong:
 
@@ -338,6 +347,26 @@ async with UserClient(
 
 `unihttp` handles errors in layers — pick the narrowest one that fits.
 
+### Catch unihttp transport exceptions and choose retries explicitly
+
+Import transport exceptions from `unihttp.exceptions`. Since 0.4.0, backend
+error mappings cover more failures when sending requests and reading responses:
+
+- `NetworkError` and `RequestTimeoutError`: candidates for retries when replaying
+  the operation is safe.
+- `NonRetryableError`: deterministic failures such as invalid URLs and redirect
+  loops; correct the request or configuration.
+- Plain `UniHTTPError`: other mapped backend errors; do not retry the base
+  class, which also includes `NonRetryableError` and HTTP status errors.
+
+Mapped exceptions retain the original as `__cause__`. Exceptions outside a
+backend's mapping propagate unchanged, such as `RuntimeError` from a closed
+HTTPX client. Some misuse errors, including HTTPX's `StreamConsumed` and
+`CookieConflict`, are mapped to plain `UniHTTPError`.
+
+HTTP status errors require explicit handling. Keep backend session status
+raising disabled so unihttp hooks and middleware can inspect the response.
+
 ### Map status codes to exceptions with the error-mapper middleware, not ad-hoc `if`s
 
 For "turn HTTP status N into exception X" rules that apply across endpoints, use
@@ -403,8 +432,9 @@ class GetUser(BaseMethod[User]):
 
 ### Validate "200 OK but error in body" with `validate_response`
 
-Some APIs return `200` with `{"ok": false}`. Override `validate_response` (on the
-method or client) instead of leaking that check into business code.
+Some APIs return `200` with `{"ok": false}`. For buffered responses, override
+`validate_response` on the method or client. The method hook below takes only
+`response`; the client hook takes `(self, response, method)`.
 
 ```python
 def validate_response(self, response: HTTPResponse) -> None:
@@ -414,8 +444,8 @@ def validate_response(self, response: HTTPResponse) -> None:
 
 ### Read response headers/status by overriding `make_response`
 
-`bind_method` returns only the deserialized **body** — headers, status code, and
-cookies are invisible to callers by default. When you need them (a `Link`
+For `BaseMethod`, `bind_method` returns only the deserialized **body** — headers,
+status code, and cookies are invisible to callers by default. When you need them (a `Link`
 pagination header, a rate-limit header, a `Location`), override the method's
 `make_response`; it receives the full `HTTPResponse` (`.headers`, `.status_code`,
 `.cookies`, `.data`). The return type then becomes your wrapper, not the bare body.
@@ -444,6 +474,28 @@ class ListIssues(BaseMethod[IssuePage]):  # IssuePage wraps items + next_link
 ```
 
 ## Middleware
+
+### Scope middleware to the client, binding, or call
+
+Pass `middleware=[...]` to the client constructor for all operations, to
+`bind_method(GetUser, middleware=[...])` for one binding, or to
+`client.call_method(GetUser(id=1), middleware=[...])` for one call.
+`call_method_stream` accepts the same keyword; async clients require `await`
+and async middleware. Do not put `__middleware__` on method classes or pass
+`middleware=` to a bound call, whose arguments construct the method itself.
+
+Client middleware wraps binding/call middleware. Within each list, the first
+entry is outermost; the response passes through in reverse order. A direct
+`call_method` bypasses middleware attached to a binding.
+
+For buffered status retries, place the error mapper outside the retry
+middleware: `[status_mapper, retry]`. Hooks run inside the chain, so a hook
+that raises on a retryable status prevents status-based retries. Exceptions
+are retried only when listed in `exceptions`; opt into
+`[NetworkError, RequestTimeoutError]` when safe. `retries=3` means up to four
+attempts; defaults cover statuses 500, 502, 503, and 504. Retries do not check
+idempotency or implement `Retry-After` handling. Read the
+[streaming reference](references/streaming.md) before adding retries to downloads.
 
 ### Match middleware sync/async type to the client, and call `next_handler`
 

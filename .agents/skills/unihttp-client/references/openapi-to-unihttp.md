@@ -8,11 +8,12 @@ OpenAPI *request* becomes the method's marked fields.
 
 | OpenAPI                          | unihttp                                             |
 | -------------------------------- | --------------------------------------------------- |
-| Path + HTTP method               | One `BaseMethod` subclass                            |
+| Path + HTTP method               | One `BaseMethod` or `StreamMethod` subclass           |
 | `operationId`                    | Class name (PascalCase) and bound method name (snake)|
 | Path template `/pets/{petId}`    | `__url__ = "/pets/{petId}"`                          |
 | HTTP verb                        | `__method__ = "GET"` (uppercase)                     |
 | Success response schema          | Generic arg: `BaseMethod[Pet]`                       |
+| Incrementally consumed response  | `StreamMethod`; caller consumes `response.data`      |
 | `204` with no response body      | `BaseMethod[None]`                                   |
 | `200`/`204` returning `{}`        | `BaseMethod[dict[str, Any]]` — NOT `None` (see note) |
 | `tags[0]` / first path segment   | Grouping into modules/subpackages, or a name prefix  |
@@ -39,6 +40,7 @@ Bind every operation on the client with `bind_method`. Use a hand-written
 | `application/x-www-form-urlencoded`      | `Form[T]`                    |
 | `multipart/form-data` file part          | `File[UploadFile]`           |
 | `multipart/form-data` scalar part        | `Form[T]`                    |
+| Prebuilt binary or text request body    | `Raw[bytes]` / `Raw[str]` with Adaptix or a custom dumper |
 | `in: cookie`                             | not a marker — set via header/middleware |
 
 Rules:
@@ -61,7 +63,9 @@ Rules:
   sent as `"user_id"` unless you add wire-name mapping (see "Wire names" below).
   For a camelCase API you **must** map `user_id → userId`, or the create body is
   silently wrong.
-- `Body` cannot coexist with `Form`/`File` on one method.
+- `Body` cannot coexist with `Form`/`File` on one method. `Raw` cannot coexist
+  with any of them. For a raw body, set `Content-Type` according to the spec;
+  the Pydantic and msgspec dumpers currently skip `Raw` fields.
 
 ## Schemas → DTOs
 
@@ -144,8 +148,15 @@ Prefer a single auth middleware (`AsyncMiddleware` for async clients,
   typed exception carrying it.
 - Reuse the built-in exceptions where they fit:
   `unihttp.exceptions.{ClientError, ServerError, HTTPStatusError, NetworkError, RequestTimeoutError, NonRetryableError, UniHTTPError}`.
-- Retry only `NetworkError` and `RequestTimeoutError`; `NonRetryableError` fails
-  the same way on every attempt.
+- For transport retries, opt into `NetworkError` and `RequestTimeoutError` only
+  when replaying the operation is safe. Do not retry `NonRetryableError` or the
+  base `UniHTTPError`. For status retries, put the error mapper outside the
+  retry middleware and keep retryable responses from raising in inner hooks.
+- Use `bind_method(..., middleware=[...])` or per-call `middleware=[...]` when
+  policies differ across operations. Client middleware remains outermost.
+- Streaming errors can occur while opening or consuming the body; retries
+  around the opening call cannot resume a failed download. See the companion
+  [streaming reference](../../unihttp/references/streaming.md).
 
 ## Pagination
 

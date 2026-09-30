@@ -19,6 +19,9 @@ base class and the install extra change.
 Import the class from its module, e.g.
 `from unihttp.clients.aiohttp import AiohttpAsyncClient`.
 
+For unihttp 0.4.0, the `zapros` extra requires `zapros>=0.12.0`. Update older
+pins or lockfiles when upgrading.
+
 ## Choosing
 
 - **Default async: `aiohttp`** (`AiohttpAsyncClient`). Mature async stack, good
@@ -41,8 +44,8 @@ Import the class from its module, e.g.
 
 ## Constructor
 
-All clients share the same core constructor (async clients additionally accept a
-backend-specific `session`/transport):
+All clients share the same core constructor. Sync and async adapters may also
+accept a backend-specific session or opener; check the selected constructor:
 
 ```python
 Client(

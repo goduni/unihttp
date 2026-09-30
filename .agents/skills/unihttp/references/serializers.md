@@ -119,3 +119,15 @@ Two gotchas: it must be the direct `= Omitted()` default —
 the `<Omitted>` sentinel into the request. And `= Omitted()` trips ruff `RUF009`
 ("function call in dataclass default"); that is a false positive (`Omitted` is a
 singleton), so add `RUF009` to your ruff `ignore`.
+
+Since 0.4.0, `copy.copy`, `copy.deepcopy`, and pickle round trips preserve the
+`Omitted()` singleton, including inside dataclasses. `dataclasses.asdict()`
+preserves the sentinel but keeps its field; use a request dumper to omit it
+from the HTTP request.
+
+## Raw request bodies
+
+`Raw[bytes]` and `Raw[str]` require Adaptix or a custom dumper. `DEFAULT_RETORT`
+preserves raw bytes instead of applying Adaptix's usual base64 conversion.
+Pydantic and msgspec dumpers currently skip `Raw` fields; select a compatible
+dumper when the endpoint requires a prebuilt body.

@@ -17,6 +17,8 @@ important one: **import from submodules** (`unihttp.method`, `unihttp.markers`,
 
 Defaults (override only when the user or spec asks):
 
+- **unihttp version:** 0.4.0 or later for new packages. Respect existing version
+  constraints and check feature availability when extending an older project.
 - **Serializer:** adaptix + stdlib dataclasses.
 - **Backend:** `aiohttp` async (`AiohttpAsyncClient`); use `requests`
   (`RequestsSyncClient`) when the user wants a synchronous client.
@@ -76,13 +78,21 @@ The full tree and file templates are in
 
 ### 5. Generate methods
 
-One `BaseMethod[ResponseType]` per operation, in `methods/<operation>.py`:
+One method per operation, in `methods/<operation>.py`. Use
+`BaseMethod[ResponseType]` for buffered results and `StreamMethod` when callers
+need incremental response consumption:
 
 - Class name from `operationId` (PascalCase); else `<Verb><Resource>`
   (`GetUser`, `CreateUser`, `ListUsers`).
 - `__url__` = the path template, `__method__` = the HTTP verb (uppercase).
 - Map parameters to markers (`Path`/`Query`/`Header`), request body to `Body`,
   form to `Form`, file uploads to `File` + `UploadFile`. See the mapping table.
+- Use `Raw[bytes]` or `Raw[str]` for a prebuilt request body with Adaptix or a
+  custom dumper; do not combine it with `Body`/`Form`/`File`.
+- For `StreamMethod`, generate explicit status handling and show `.data` as a
+  sync/async context manager. Follow the companion
+  [streaming reference](../unihttp/references/streaming.md) for return types,
+  cleanup, and retry limits.
 - For paginated list endpoints, model the response envelope as a DTO (not a bare
   `list`) or expose page/offset as optional `Query` fields — see "Pagination" in
   the mapping reference. `datetime`/`date`/`UUID`/`Decimal`/`Enum` fields need no
@@ -118,13 +128,16 @@ A single `*Client` subclass in `client.py`:
   `AsyncErrorMapperMiddleware` / `SyncErrorMapperMiddleware`, or override
   `handle_error`. Keep a small exceptions module if the API has a real error
   taxonomy.
+- Use the unihttp transport exceptions described in the companion skill. Opt
+  into retries only when replaying the operation is safe; do not retry
+  `NonRetryableError` or the base `UniHTTPError`.
 
 ### 8. Generate packaging
 
 Produce `pyproject.toml` (hatchling, `src` layout), `ruff.toml`, `mypy.ini`,
 `py.typed`, `.gitignore`, and a `README.md` with install + quickstart. Runtime
 dependency is `unihttp` with the chosen extras, e.g.
-`unihttp[aiohttp,adaptix]>=0.2.9`. Dev dependencies for the default tests are just
+`unihttp[aiohttp,adaptix]>=0.4.0`. Dev dependencies for the default tests are just
 `ruff`, `mypy`, `pytest`. In `ruff.toml` use `extend-exclude` (not `exclude`) so
 ruff keeps ignoring `.venv`. Templates in
 [references/package-layout.md](references/package-layout.md).
@@ -136,13 +149,17 @@ generated code introduces and avoid flaky HTTP-mock dependencies:
 
 - Per operation, assert `Method(...).build_http_request(dumper)` produces the
   right `url` / `method` / `query` / `body` (markers wired correctly).
-- Per response model, assert
+- Per buffered response model, assert
   `Method(...).make_response(HTTPResponse(...), response_loader=loader)` parses
   into the right DTO. Call it by **keyword** (`response_loader=`) — that is how
   `call_method` invokes it, so a method overriding `make_response` with a wrong
   parameter name is caught instead of silently passing a positional test.
-- These are synchronous and backend-agnostic — only `pytest` is needed, the same
-  for async (aiohttp) and sync (requests) clients. See
+- For a generated streaming operation, check request construction, status
+  rejection, and cleanup on early exit or a read error through a fake stream
+  or local transport. `StreamMethod` has no `make_response` step.
+- Request-building and buffered response-loading tests are synchronous and
+  backend-agnostic — only `pytest` is needed, even for an async client. Async
+  stream lifecycle tests additionally need an async test runner. See
   [references/package-layout.md](references/package-layout.md).
 
 Optionally add **one** full-pipeline test through a mocked transport, but treat it
@@ -171,7 +188,7 @@ pass (or explicitly report what does not and why).
 
 - `pyproject.toml` (+ `ruff.toml`, `mypy.ini`, `py.typed`) when scaffolding a package.
 - A DTO per request/response schema that matters; an enum per enumerated type.
-- A `BaseMethod` per operation; a single client binding them.
+- A `BaseMethod` or `StreamMethod` per operation; a single client binding them.
 - A `Retort` carrying wire-name mappings when the API is not snake_case.
 - Minimal contract tests (seam-level), or a clear note on why tests were skipped.
 - `README.md` with install and a runnable quickstart (using `async with` for
